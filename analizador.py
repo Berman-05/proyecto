@@ -2,14 +2,12 @@ import re
 
 class AnalizadorLexico:
     def __init__(self):
-       
         self.palabras_reservadas = {
             'personaje', 'habilidad', 'estado', 'objeto', 'mision', 
             'combate', 'efecto', 'condición', 'condicion', 'daño', 'dano', 
             'MP', 'HP', 'XP'
         }
         
-
         self.reglas_lexicas = [
             ('ERROR_ID_NUM',  r'\d+[a-zA-Z_][a-zA-Z0-9_]*'), 
             ('OP_COMPARACION',r'==|!=|>=|<=|>|<'),             
@@ -18,7 +16,8 @@ class AnalizadorLexico:
             ('NUMERO',        r'\d+'),                      
             ('IDENTIFICADOR', r'[a-zA-Z_][a-zA-Z0-9_]*'),  
             ('ESPACIO',       r'[ \t\n]+'),                  
-            ('DESCONOCIDO',   r'.'),                         
+            ('DESCONOCIDO',   r'.')
+        ]
         
         self.regex = '|'.join(f'(?P<{nombre}>{patron})' for nombre, patron in self.reglas_lexicas)
 
