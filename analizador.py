@@ -9,6 +9,7 @@ class AnalizadorLexico:
         }
         
         self.reglas_lexicas = [
+            ('COMENTARIO', r'--.*'),
             ('ERROR_ID_NUM',  r'\d+[a-zA-Z_][a-zA-Z0-9_]*'), 
             ('OP_COMPARACION',r'==|!=|>=|<=|>|<'),             
             ('OPERADOR',      r'[\+\-\*\/]'),               
