@@ -18,8 +18,6 @@ class LineNumberCanvas(tk.Canvas):
             self.create_text(35, y, anchor="ne", text=linenum, fill="#64748b", font=self.text_widget['font'])
             i = self.text_widget.index("%s+1line" % i)
 
-
-
 class AppAnalizador:
     def __init__(self, root):
         self.root = root
@@ -36,6 +34,23 @@ class AppAnalizador:
         self.create_widgets()
         self.setup_styles()       
 
+    def resaltar_errores(self, event=None):
+        self.txt_input.tag_remove("error_subrayado", "1.0", "end")
+        
+        codigo = self.txt_input.get("1.0", "end-1c")
+        if not codigo.strip(): return
+
+        res = self.analizador.analizar(codigo)
+
+        for item in res["desglose"]:
+            if "rango" in item:
+                inicio_abs, fin_abs = item["rango"]
+                
+                pos_inicio = f"1.0 + {inicio_abs} chars"
+                pos_fin = f"1.0 + {fin_abs} chars"
+                
+                self.txt_input.tag_add("error_subrayado", pos_inicio, pos_fin)
+    
     def setup_styles(self):
         style = ttk.Style()
         style.theme_use('clam')
@@ -49,8 +64,8 @@ class AppAnalizador:
                          font=self.fuente_ui)
         style.map("Treeview", background=[('selected', '#3b82f6')])
         style.configure("Treeview.Heading", background="#1e293b", foreground="#38bdf8", relief="flat",font=self.fuente_ui)
-        self.tabla_tokens.tag_configure("error_lexico", foreground="#f43f5e") # Un rojo suave
-
+        self.tabla_tokens.tag_configure("error_lexico", foreground="#f43f5e") 
+        self.txt_input.tag_configure("error_subrayado", foreground="#f43f5e", underline=True)
 
     def create_widgets(self):
         header = tk.Frame(self.root, bg="#1e293b", height=60)
@@ -80,6 +95,7 @@ class AppAnalizador:
         self.line_numbers.text_widget = self.txt_input
         self.txt_input.bind("<KeyRelease>", lambda e: self.line_numbers.redraw())
         self.txt_input.bind("<MouseWheel>", lambda e: self.line_numbers.redraw())
+        self.txt_input.bind("<KeyRelease>", self.resaltar_errores, add="+")
 
         right_panel = ttk.Frame(self.main_container, style="TFrame")
         right_panel.pack(side="right", fill="both", expand=True, padx=(10, 0))
@@ -141,8 +157,6 @@ class AppAnalizador:
         else:
             self.lbl_status.config(text="● ERRORES ENCONTRADOS", fg="#f43f5e")
             self.btn_analizar.config(bg="#f43f5e")
-
-
 
 if __name__ == "__main__":
     root = tk.Tk()

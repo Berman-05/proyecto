@@ -28,15 +28,18 @@ class AnalizadorLexico:
         for coincidencia in re.finditer(self.regex, codigo_fuente):
             tipo_token = coincidencia.lastgroup
             lexema = coincidencia.group()
+            inicio = coincidencia.start()
+            fin = coincidencia.end()
             
             if tipo_token == 'ESPACIO':
                 continue
                 
-            elif tipo_token == 'ERROR_ID_NUM':
+            elif tipo_token == 'ERROR_ID_NUM' or tipo_token == 'DESCONOCIDO':
                 aprobado = False
                 resultados.append({
                     "lexema": lexema,
-                    "token": "ERROR LÉXICO: numero e identificador son tokens diferentes"
+                    "token": "ERROR LÉXICO",
+                    "rango": (inicio, fin)
                 })
                 
             elif tipo_token == 'DESCONOCIDO':
