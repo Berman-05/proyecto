@@ -18,6 +18,29 @@ class LineNumberCanvas(tk.Canvas):
             self.create_text(35, y, anchor="ne", text=linenum, fill="#64748b", font=self.text_widget['font'])
             i = self.text_widget.index("%s+1line" % i)
 
+class ToolTip:
+    def __init__(self, widget):
+        self.widget = widget
+        self.tip_window = None
+
+    def show_tip(self, text, x, y):
+        if self.tip_window or not text: return
+        x += self.widget.winfo_rootx() + 20
+        y += self.widget.winfo_rooty() + 20
+        self.tip_window = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True) 
+        tw.wm_geometry(f"+{x}+{y}")
+        
+        label = tk.Label(tw, text=text, justify="left",
+                         background="#1e293b", foreground="#f8fafc", relief="flat",
+                         border=1, padx=10, pady=5, font=("Segoe UI", 9))
+        label.pack()
+
+    def hide_tip(self):
+        if self.tip_window:
+            self.tip_window.destroy()
+            self.tip_window = None
+
 class AppAnalizador:
     def __init__(self, root):
         self.root = root
@@ -35,12 +58,12 @@ class AppAnalizador:
         self.setup_styles()       
 
     def resaltar_errores(self, event=None):
-        self.txt_input.tag_remove("error_subrayado", "1.0", "end")
-        
+        self.txt_input.tag_remove("error_subrayado", "1.0", "end")    
         codigo = self.txt_input.get("1.0", "end-1c")
         if not codigo.strip(): return
 
         res = self.analizador.analizar(codigo)
+        self.analizador.ultimo_resultado = res
 
         for item in res["desglose"]:
             if "rango" in item:
@@ -71,7 +94,7 @@ class AppAnalizador:
         header = tk.Frame(self.root, bg="#1e293b", height=60)
         header.pack(fill="x", side="top")
         
-        tk.Label(header, text="⚔️ RPG ENGINE | ANALIZADOR LÉXICO", bg="#1e293b", fg="#f8fafc", 
+        tk.Label(header, text="⚔️ RPG SCRIPT LEXER | ANALIZADOR LÉXICO", bg="#1e293b", fg="#f8fafc", 
                  font=self.fuente_titulo).pack(side="left", padx=20, pady=15)
 
         self.main_container = ttk.Frame(self.root, style="TFrame")
@@ -134,6 +157,10 @@ class AppAnalizador:
 
         self.root.after(200, self.line_numbers.redraw)
 
+        self.tooltip = ToolTip(self.txt_input)
+        self.txt_input.bind("<Motion>", self.verificar_tooltip)
+        self.errores_actuales = [] 
+
     def ejecutar(self):
         codigo = self.txt_input.get("1.0", "end-1c")
         if not codigo.strip(): return
@@ -157,6 +184,23 @@ class AppAnalizador:
         else:
             self.lbl_status.config(text="● ERRORES ENCONTRADOS", fg="#f43f5e")
             self.btn_analizar.config(bg="#f43f5e")
+
+    def verificar_tooltip(self, event):
+        index = self.txt_input.index(f"@{event.x},{event.y}")
+        tags = self.txt_input.tag_names(index)
+        
+        if "error_subrayado" in tags:
+            linea, col = map(int, index.split('.'))
+            pos_plana = len(self.txt_input.get("1.0", f"{linea}.0")) + col
+            
+            for item in self.analizador.ultimo_resultado.get("desglose", []):
+                if "rango" in item:
+                    inicio, fin = item["rango"]
+                    if inicio <= pos_plana < fin:
+                        self.tooltip.show_tip(item["mensaje"], event.x, event.y)
+                        return
+        
+        self.tooltip.hide_tip()
 
 if __name__ == "__main__":
     root = tk.Tk()

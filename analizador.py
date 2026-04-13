@@ -35,11 +35,12 @@ class AnalizadorLexico:
             if tipo_token == 'ESPACIO':
                 continue
                 
-            elif tipo_token == 'ERROR_ID_NUM' or tipo_token == 'DESCONOCIDO':
+            elif tipo_token == 'ERROR_ID_NUM':
                 aprobado = False
                 resultados.append({
                     "lexema": lexema,
                     "token": "ERROR LÉXICO",
+                    "mensaje": "Identificador inválido: no puede comenzar con un número.",
                     "rango": (inicio, fin)
                 })
                 
@@ -47,7 +48,9 @@ class AnalizadorLexico:
                 aprobado = False
                 resultados.append({
                     "lexema": lexema,
-                    "token": "ERROR LÉXICO: Símbolo no definido en el lenguaje."
+                    "token": "ERROR LÉXICO",
+                    "mensaje": f"Símbolo '{lexema}' no reconocido en este lenguaje.",
+                    "rango": (inicio, fin)
                 })
                 
             elif tipo_token == 'IDENTIFICADOR':
