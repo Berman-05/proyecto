@@ -133,7 +133,7 @@ class AppAnalizador:
         header = tk.Frame(self.root, bg="#1e293b", height=60)
         header.pack(fill="x", side="top")
         tk.Label(header,
-                 text="⚔️ RPG SCRIPT LEXER | ANALIZADOR LÉXICO",
+                 text="⚔️ RPG SCRIPT COMPILER",
                  bg="#1e293b", fg="#f8fafc",
                  font=self.fuente_titulo).pack(side="left", padx=20, pady=15)
 
