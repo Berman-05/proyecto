@@ -9,12 +9,8 @@ class AnalizadorSintactico:
             lexema = tok["lexema"]
             linea = tok.get("linea", 1)
 
-            # -------------------------
-            # 🔹 BLOQUES (mision, personaje, etc.)
-            # -------------------------
             if tok["token"] == "PALABRA_RESERVADA":
 
-                # Caso: mision nombre {
                 if lexema == "mision":
                     if not self._esperar(tokens, i+1, "IDENTIFICADOR"):
                         errores.append(self._error(linea, "Se esperaba nombre de misión"))
@@ -24,9 +20,8 @@ class AnalizadorSintactico:
                     
                     else:
                         pila_llaves.append(tok)
-                        i += 2  # saltar nombre y {
+                        i += 2  
 
-                # Caso: objeto nombre ;
                 elif lexema == "objeto":
                     if not self._esperar(tokens, i+1, "IDENTIFICADOR"):
                         errores.append(self._error(linea, "Se esperaba identificador después de 'objeto'"))
@@ -36,7 +31,6 @@ class AnalizadorSintactico:
                     
                     i += 2
 
-                # Caso: estado nombre ;
                 elif lexema == "estado":
                     if not self._esperar(tokens, i+1, "IDENTIFICADOR"):
                         errores.append(self._error(linea, "Se esperaba identificador después de 'estado'"))
@@ -46,7 +40,6 @@ class AnalizadorSintactico:
                     
                     i += 2
 
-                # Caso: condicion nivel >= 5 ;
                 elif lexema in ["condicion", "condición"]:
                     if not self._esperar(tokens, i+1, "IDENTIFICADOR"):
                         errores.append(self._error(linea, "Se esperaba variable en condición"))
@@ -62,7 +55,6 @@ class AnalizadorSintactico:
                     
                     i += 4
 
-                # Caso: XP = 200 ;
                 elif lexema in ["XP", "HP", "MP"]:
                     if not self._esperar_lexema(tokens, i+1, "="):
                         errores.append(self._error(linea, "Se esperaba '='"))
@@ -75,9 +67,6 @@ class AnalizadorSintactico:
                     
                     i += 3
 
-            # -------------------------
-            # 🔹 LLAVES
-            # -------------------------
             elif lexema == "{":
                 pila_llaves.append(tok)
 
@@ -89,9 +78,6 @@ class AnalizadorSintactico:
 
             i += 1
 
-        # -------------------------
-        # 🔹 Llaves sin cerrar
-        # -------------------------
         if pila_llaves:
             ultimo = pila_llaves[-1]
             errores.append(self._error(
@@ -100,10 +86,6 @@ class AnalizadorSintactico:
             ))
 
         return errores
-
-    # =============================
-    # 🔧 FUNCIONES AUXILIARES
-    # =============================
 
     def _esperar(self, tokens, index, tipo):
         return index < len(tokens) and tokens[index]["token"] == tipo

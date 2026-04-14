@@ -243,7 +243,11 @@ def arbol_a_texto(nodo, prefijo="", es_ultimo=True):
     lineas = []
 
     conector = "└── " if es_ultimo else "├── "
-    lineas.append(prefijo + conector + nodo.etiqueta)
+    
+    etiqueta = nodo.etiqueta
+    es_error = nodo.es_error
+
+    lineas.append((prefijo + conector + etiqueta, es_error))
 
     nuevo_prefijo = prefijo + ("    " if es_ultimo else "│   ")
 
