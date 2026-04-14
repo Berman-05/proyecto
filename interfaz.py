@@ -1,7 +1,8 @@
 import tkinter as tk
 from tkinter import ttk, font
 from analizador import AnalizadorLexico
-from arbol import PestanaArbol, construir_arbol_desde_tokens
+from sintactico import AnalizadorSintactico
+from arbol import PestanaArbol, construir_arbol_desde_tokens, arbol_a_texto
 
 class LineNumberCanvas(tk.Canvas):
     def __init__(self, *args, **kwargs):
@@ -51,6 +52,7 @@ class AppAnalizador:
     def __init__(self, root):
         self.root = root
         self.analizador = AnalizadorLexico()
+        self.sintactico = AnalizadorSintactico()
 
         self.root.title("RPG Script Lexer Pro")
         self.root.geometry("1100x700")
@@ -79,6 +81,10 @@ class AppAnalizador:
                 self.txt_input.tag_add("error_subrayado",
                                        f"1.0 + {inicio_abs} chars",
                                        f"1.0 + {fin_abs} chars")
+    
+    def obtener_linea(self, posicion):
+        texto = self.txt_input.get("1.0", "end")
+        return texto[:posicion].count("\n") + 1
 
     def setup_styles(self):
         self.style = ttk.Style()
@@ -214,6 +220,32 @@ class AppAnalizador:
         self.tooltip = ToolTip(self.txt_input)
         self.txt_input.bind("<Motion>", self.verificar_tooltip)
 
+        # NUEVA pestaña
+        tab_arbol_texto = ttk.Frame(self.notebook, style="TFrame")
+        self.notebook.add(tab_arbol_texto, text="  Árbol Texto  ")
+
+        self.txt_arbol = tk.Text(tab_arbol_texto,
+                                font=("Consolas", 10),
+                                bg="#020617", fg="#e2e8f0",
+                                relief="flat", padx=10, pady=10)
+        self.txt_arbol.pack(fill="both", expand=True, padx=10, pady=10)
+
+        frame_errores = tk.Frame(self.root, bg="#020617", height=120)
+        frame_errores.pack(fill="x", padx=20, pady=(0,10))
+
+        tk.Label(frame_errores, text="ERRORES",
+                bg="#020617", fg="#f43f5e",
+                font=self.fuente_ui).pack(anchor="w")
+
+        cols = ("linea", "tipo", "descripcion")
+        self.tabla_errores = ttk.Treeview(frame_errores, columns=cols, show="headings")
+
+        self.tabla_errores.heading("linea", text="Línea")
+        self.tabla_errores.heading("tipo", text="Tipo")
+        self.tabla_errores.heading("descripcion", text="Descripción")
+
+        self.tabla_errores.pack(fill="x")
+
     def actualizar_fuente(self):
         try:
             nuevo_tamano = self.var_tamano_fuente.get()
@@ -241,6 +273,7 @@ class AppAnalizador:
             return
 
         res = self.analizador.analizar(codigo)
+        errores_sintacticos = self.sintactico.analizar(res["desglose"])
 
         for item in self.tabla_tokens.get_children():
             self.tabla_tokens.delete(item)
@@ -254,13 +287,44 @@ class AppAnalizador:
         arbol = construir_arbol_desde_tokens(res)
         self.pestana_arbol.mostrar(arbol, self.fuente_arbol_rama, self.fuente_arbol_hoja)
 
-        if res["aprobado"]:
+        if res["aprobado"] and not errores_sintacticos:
             self.lbl_status.config(text="● ANÁLISIS EXITOSO", fg="#10b981")
             self.btn_analizar.config(bg="#10b981")
         else:
             self.lbl_status.config(text="● ERRORES ENCONTRADOS", fg="#f43f5e")
             self.btn_analizar.config(bg="#f43f5e")
 
+        lineas = arbol_a_texto(arbol)
+        self.txt_arbol.delete("1.0", "end")
+        self.txt_arbol.insert("1.0", "\n".join(lineas))
+
+        for item in self.tabla_errores.get_children():
+            self.tabla_errores.delete(item)
+
+       # limpiar tabla
+        for item in self.tabla_errores.get_children():
+            self.tabla_errores.delete(item)
+
+        # errores léxicos
+        for item in res["desglose"]:
+            if "ERROR" in item["token"]:
+                inicio = item["rango"][0]
+                linea = self.obtener_linea(inicio)
+
+                self.tabla_errores.insert("", "end", values=(
+                    linea, "LÉXICO", item["mensaje"]
+                ))
+
+        # errores sintácticos
+        for err in errores_sintacticos:
+            self.tabla_errores.insert("", "end", values=(
+                err["linea"], "SINTÁCTICO", err["mensaje"]
+            ))
+
+        
+        print("TOKENS:", res["desglose"])
+        print("SINTÁCTICOS:", errores_sintacticos)
+    
     def verificar_tooltip(self, event):
         index = self.txt_input.index(f"@{event.x},{event.y}")
         tags  = self.txt_input.tag_names(index)
@@ -272,7 +336,10 @@ class AppAnalizador:
                 if "rango" in item:
                     inicio, fin = item["rango"]
                     if inicio <= pos_plana < fin:
-                        self.tooltip.show_tip(item["mensaje"], event.x, event.y)
+                        self.tooltip.show_tip(
+                            f"{item['token']}: {item['mensaje']}",
+                            event.x, event.y
+                        )
                         return
         self.tooltip.hide_tip()
 

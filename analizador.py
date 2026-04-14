@@ -25,12 +25,14 @@ class AnalizadorLexico:
     def analizar(self, codigo_fuente):
         resultados = []
         aprobado = True
-        
+        linea = 1
         for coincidencia in re.finditer(self.regex, codigo_fuente):
             tipo_token = coincidencia.lastgroup
             lexema = coincidencia.group()
             inicio = coincidencia.start()
             fin = coincidencia.end()
+            linea_actual = linea
+            linea += lexema.count('\n')
             
             if tipo_token == 'ESPACIO':
                 continue
@@ -41,7 +43,8 @@ class AnalizadorLexico:
                     "lexema": lexema,
                     "token": "ERROR LÉXICO",
                     "mensaje": "Identificador inválido: no puede comenzar con un número.",
-                    "rango": (inicio, fin)
+                    "rango": (inicio, fin),
+                    "linea": linea_actual
                 })
                 
             elif tipo_token == 'DESCONOCIDO':
@@ -50,26 +53,27 @@ class AnalizadorLexico:
                     "lexema": lexema,
                     "token": "ERROR LÉXICO",
                     "mensaje": f"Símbolo '{lexema}' no reconocido en este lenguaje.",
-                    "rango": (inicio, fin)
+                    "rango": (inicio, fin),
+                    "linea": linea_actual
                 })
                 
             elif tipo_token == 'IDENTIFICADOR':
                 if lexema in self.palabras_reservadas:
-                    resultados.append({"lexema": lexema, "token": "PALABRA_RESERVADA"})
+                    resultados.append({"lexema": lexema, "token": "PALABRA_RESERVADA", "linea": linea_actual})
                 else:
-                    resultados.append({"lexema": lexema, "token": "IDENTIFICADOR"})
-                    
+                    resultados.append({"lexema": lexema, "token": "IDENTIFICADOR", "linea": linea_actual})
+
             elif tipo_token == 'NUMERO':
-                resultados.append({"lexema": lexema, "token": "NUMERO"})
+                resultados.append({"lexema": lexema, "token": "NUMERO", "linea": linea_actual})
                 
             elif tipo_token == 'SIMBOLO':
-                resultados.append({"lexema": lexema, "token": "SIMBOLO_ESTRUCTURAL"})
+                resultados.append({"lexema": lexema, "token": "SIMBOLO_ESTRUCTURAL", "linea": linea_actual})
                 
             elif tipo_token == 'OP_COMPARACION':
-                resultados.append({"lexema": lexema, "token": "OPERADOR_COMPARACION"})
+                resultados.append({"lexema": lexema, "token": "OPERADOR_COMPARACION", "linea": linea_actual})
                 
             elif tipo_token == 'OPERADOR':
-                resultados.append({"lexema": lexema, "token": "OPERADOR"})
+                resultados.append({"lexema": lexema, "token": "OPERADOR", "linea": linea_actual})
 
         return {
             "aprobado": aprobado,

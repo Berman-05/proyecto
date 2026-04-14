@@ -5,6 +5,7 @@ class ToolTipArbol:
     def __init__(self, canvas):
         self.canvas = canvas
         self.tip_window = None
+        
 
     def show_tip(self, text, x, y):
         if self.tip_window or not text:
@@ -238,6 +239,20 @@ def dibujar_arbol(canvas, raiz, fuente_rama, fuente_hoja):
     _dibujar_aristas(canvas, raiz)
     _dibujar_nodos(canvas, raiz, fuente_rama, fuente_hoja, es_raiz=True)
 
+def arbol_a_texto(nodo, prefijo="", es_ultimo=True):
+    lineas = []
+
+    conector = "└── " if es_ultimo else "├── "
+    lineas.append(prefijo + conector + nodo.etiqueta)
+
+    nuevo_prefijo = prefijo + ("    " if es_ultimo else "│   ")
+
+    for i, hijo in enumerate(nodo.hijos):
+        es_ult = (i == len(nodo.hijos) - 1)
+        lineas.extend(arbol_a_texto(hijo, nuevo_prefijo, es_ult))
+
+    return lineas
+
 class PestanaArbol:
     def __init__(self, parent, fuente_ui):
         self.frame = tk.Frame(parent, bg="#0f172a")
@@ -295,3 +310,5 @@ class PestanaArbol:
 
     def _contar(self, nodo):
         return 1 + sum(self._contar(h) for h in nodo.hijos)
+    
+    
