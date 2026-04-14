@@ -242,7 +242,7 @@ class AppAnalizador:
         self.notebook.add(tab_arbol_texto, text="  Árbol Texto  ")
 
         self.txt_arbol = tk.Text(tab_arbol_texto,
-                                font=("Consolas", 10),
+                                font = self.fuente_mono,
                                 bg="#020617", fg="#e2e8f0",
                                 relief="flat", padx=10, pady=10)
         self.txt_arbol.pack(fill="both", expand=True, padx=10, pady=10)
@@ -269,6 +269,7 @@ class AppAnalizador:
             nuevo_tamano = self.var_tamano_fuente.get()
             
             self.fuente_mono.configure(size=nuevo_tamano)
+            self.txt_arbol.config(font=self.fuente_mono)
             self.line_numbers.redraw()
             
             tamano_ui = max(9, nuevo_tamano - 1)
@@ -281,6 +282,7 @@ class AppAnalizador:
             self.fuente_arbol_rama.configure(size=tamano_rama)
             self.fuente_arbol_hoja.configure(size=nuevo_tamano)
             self.pestana_arbol.redibujar_con_fuente(self.fuente_arbol_rama, self.fuente_arbol_hoja)
+            
             
         except tk.TclError:
             pass 
