@@ -35,11 +35,13 @@ class AnalizadorSintactico:
                     if not self._esperar(tokens, i+1, "IDENTIFICADOR"):
                         errores.append(self._error(linea, "Se esperaba identificador después de 'estado'"))
                     
-                    elif not self._esperar_lexema(tokens, i+2, ";"):
-                        errores.append(self._error(linea, "Falta ';' después de estado"))
+                    elif not self._esperar_lexema(tokens, i+2, "{"):
+                        errores.append(self._error(linea, "Se esperaba '{' después de estado"))
                     
-                    i += 2
-
+                    else:
+                        pila_llaves.append(tok)
+                        i += 2
+                        
                 elif lexema in ["condicion", "condición"]:
                     if not self._esperar(tokens, i+1, "IDENTIFICADOR"):
                         errores.append(self._error(linea, "Se esperaba variable en condición"))
