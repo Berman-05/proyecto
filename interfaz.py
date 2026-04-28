@@ -3,6 +3,7 @@ from tkinter import ttk, font
 from analizador import AnalizadorLexico
 from sintactico import AnalizadorSintactico
 from arbol import PestanaArbol, construir_arbol_desde_tokens, arbol_a_texto
+from semantico import AnalizadorSemantico
 
 class LineNumberCanvas(tk.Canvas):
     def __init__(self, *args, **kwargs):
@@ -53,6 +54,7 @@ class AppAnalizador:
         self.root = root
         self.analizador = AnalizadorLexico()
         self.sintactico = AnalizadorSintactico()
+        self.semantico = AnalizadorSemantico()
 
         self.root.title("RPG Script Lexer Pro")
         self.root.geometry("1100x700")
@@ -264,6 +266,19 @@ class AppAnalizador:
 
         self.tabla_errores.pack(fill="x")
 
+        tab_simbolos = ttk.Frame(self.notebook, style="TFrame")
+        self.notebook.add(tab_simbolos, text="  Tabla de Símbolos  ")
+
+        cols = ("lexema", "categoria", "valor")
+
+        self.tabla_simbolos = ttk.Treeview(tab_simbolos, columns=cols, show="headings")
+
+        self.tabla_simbolos.heading("lexema", text="IDENTIFICADOR")
+        self.tabla_simbolos.heading("categoria", text="CATEGORÍA")
+        self.tabla_simbolos.heading("valor", text="VALORES")
+
+        self.tabla_simbolos.pack(fill="both", expand=True, padx=10, pady=10)
+
     def actualizar_fuente(self):
         try:
             nuevo_tamano = self.var_tamano_fuente.get()
@@ -294,6 +309,10 @@ class AppAnalizador:
 
         res = self.analizador.analizar(codigo)
         errores_sintacticos = self.sintactico.analizar(res["desglose"])
+        if errores_sintacticos:
+            errores_semanticos = []
+        else:
+            errores_semanticos = self.semantico.analizar(res["desglose"])
 
         for item in self.tabla_tokens.get_children():
             self.tabla_tokens.delete(item)
@@ -307,11 +326,11 @@ class AppAnalizador:
         arbol = construir_arbol_desde_tokens(res)
         self.pestana_arbol.mostrar(arbol, self.fuente_arbol_rama, self.fuente_arbol_hoja)
 
-        if res["aprobado"] and not errores_sintacticos:
+        if res["aprobado"] and not errores_sintacticos and not errores_semanticos:
             self.lbl_status.config(text="● ANÁLISIS EXITOSO", fg="#10b981")
             self.btn_analizar.config(bg="#10b981")
         else:
-            self.lbl_status.config(text="● ERRORES ENCONTRADOS", fg="#f43f5e")
+            self.lbl_status.config(text="● ERRORES ENCONTRADOS (ANÁLISIS DETENIDO)", fg="#f43f5e")
             self.btn_analizar.config(bg="#f43f5e")
 
         lineas = arbol_a_texto(arbol)
@@ -323,9 +342,6 @@ class AppAnalizador:
                 self.txt_arbol.insert("end", texto + "\n", "error")
             else:
                 self.txt_arbol.insert("end", texto + "\n")
-
-        for item in self.tabla_errores.get_children():
-            self.tabla_errores.delete(item)
 
         for item in self.tabla_errores.get_children():
             self.tabla_errores.delete(item)
@@ -344,9 +360,29 @@ class AppAnalizador:
                 err["linea"], "SINTÁCTICO", err["mensaje"]
             ))
 
+        for err in errores_semanticos:
+            self.tabla_errores.insert("", "end", values=(
+                err["linea"], "SEMÁNTICO", f"{err.get('codigo','')}: {err['mensaje']}"
+        ))
         
+        self.tabla_simbolos.delete(*self.tabla_simbolos.get_children())
+        for nombre, datos in self.semantico.tabla_simbolos.items():
+            valores = ", ".join(f"{k}={v['valor']} ({v['tipo']})"for k, v in datos["valor"].items()
+)
+
+
+            self.tabla_simbolos.insert("", "end", values=(
+                nombre,
+                datos["categoria"],
+                valores
+            ))
+
         print("TOKENS:", res["desglose"])
         print("SINTÁCTICOS:", errores_sintacticos)
+        print("SEMÁNTICOS:", errores_semanticos)
+        print("TABLA SIMBOLOS:", self.semantico.tabla_simbolos)
+
+        
     
     def verificar_tooltip(self, event):
         index = self.txt_input.index(f"@{event.x},{event.y}")
@@ -355,6 +391,8 @@ class AppAnalizador:
         if "error_subrayado" in tags:
             linea, col = map(int, index.split('.'))
             pos_plana = len(self.txt_input.get("1.0", f"{linea}.0")) + col
+            if not hasattr(self.analizador, "ultimo_resultado"):
+                return
             for item in self.analizador.ultimo_resultado.get("desglose", []):
                 if "rango" in item:
                     inicio, fin = item["rango"]
@@ -379,7 +417,8 @@ class AppAnalizador:
 
         for item in res["desglose"]:
             if "ERROR" in item["token"]:
-                linea = item.get("linea", 1)
+                inicio = item["rango"][0]
+                linea = self.obtener_linea(inicio)
                 self.tabla_errores.insert("", "end", values=(
                     linea, "LÉXICO", item["mensaje"]
                 ))
@@ -387,6 +426,16 @@ class AppAnalizador:
         for err in errores_sintacticos:
             self.tabla_errores.insert("", "end", values=(
                 err["linea"], "SINTÁCTICO", err["mensaje"]
+            ))
+
+        if not errores_sintacticos:
+            errores_semanticos = self.semantico.analizar(res["desglose"])
+        else:
+            errores_semanticos = []
+
+        for err in errores_semanticos:
+            self.tabla_errores.insert("", "end", values=(
+                err["linea"], "SEMÁNTICO", err["mensaje"]
             ))
 
 if __name__ == "__main__":
