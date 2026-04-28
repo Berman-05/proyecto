@@ -67,6 +67,7 @@ class AppAnalizador:
         self.fuente_arbol_rama = font.Font(family="Segoe UI", size=9, weight="bold")
         self.fuente_arbol_hoja = font.Font(family="Consolas", size=10)
 
+        self._debounce_id = None
         self.create_widgets()
         self.setup_styles()
 
@@ -162,16 +163,6 @@ class AppAnalizador:
                                    font=self.fuente_ui)
         self.lbl_status.pack(side="left", padx=20)
 
-        self.btn_analizar = tk.Button(footer, text="EJECUTAR ANÁLISIS",
-                                      command=self.ejecutar,
-                                      bg="#3b82f6", fg="white",
-                                      font=("Segoe UI", 10, "bold"),
-                                      relief="flat", padx=25, pady=8,
-                                      cursor="hand2",
-                                      activebackground="#2563eb",
-                                      activeforeground="white")
-        self.btn_analizar.pack(side="right", padx=20, pady=10)
-
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill="both", expand=True, padx=20, pady=(14, 0))
 
@@ -210,7 +201,7 @@ class AppAnalizador:
         self.txt_input.bind("<KeyRelease>", lambda e: self.line_numbers.redraw())
         self.txt_input.bind("<MouseWheel>", lambda e: self.line_numbers.redraw())
         self.txt_input.bind("<KeyRelease>", self.resaltar_errores, add="+")
-        self.txt_input.bind("<KeyRelease>", self.analizar_en_tiempo_real, add="+")
+        self.txt_input.bind("<KeyRelease>", self._programar_analisis, add="+")
 
         tk.Label(right_panel, text="TOKENS DETECTADOS",
                  bg="#0f172a", fg="#38bdf8",
@@ -302,9 +293,25 @@ class AppAnalizador:
         except tk.TclError:
             pass 
 
+    def _programar_analisis(self, event=None):
+        """Cancela el análisis pendiente y programa uno nuevo con debounce de 300ms."""
+        if self._debounce_id is not None:
+            self.root.after_cancel(self._debounce_id)
+        self._debounce_id = self.root.after(300, self.ejecutar)
+
     def ejecutar(self):
+        self._debounce_id = None
         codigo = self.txt_input.get("1.0", "end-1c")
+
         if not codigo.strip():
+            # Limpiar todo si el editor está vacío
+            for item in self.tabla_tokens.get_children():
+                self.tabla_tokens.delete(item)
+            for item in self.tabla_errores.get_children():
+                self.tabla_errores.delete(item)
+            self.tabla_simbolos.delete(*self.tabla_simbolos.get_children())
+            self.txt_arbol.delete("1.0", "end")
+            self.lbl_status.config(text="● Sistema listo", fg="#94a3b8")
             return
 
         res = self.analizador.analizar(codigo)
@@ -316,7 +323,6 @@ class AppAnalizador:
 
         for item in self.tabla_tokens.get_children():
             self.tabla_tokens.delete(item)
-
         for item in res["desglose"]:
             token  = item["token"]
             lexema = item["lexema"]
@@ -328,15 +334,11 @@ class AppAnalizador:
 
         if res["aprobado"] and not errores_sintacticos and not errores_semanticos:
             self.lbl_status.config(text="● ANÁLISIS EXITOSO", fg="#10b981")
-            self.btn_analizar.config(bg="#10b981")
         else:
             self.lbl_status.config(text="● ERRORES ENCONTRADOS (ANÁLISIS DETENIDO)", fg="#f43f5e")
-            self.btn_analizar.config(bg="#f43f5e")
 
         lineas = arbol_a_texto(arbol)
-
         self.txt_arbol.delete("1.0", "end")
-
         for texto, es_error in lineas:
             if es_error:
                 self.txt_arbol.insert("end", texto + "\n", "error")
@@ -350,7 +352,6 @@ class AppAnalizador:
             if "ERROR" in item["token"]:
                 inicio = item["rango"][0]
                 linea = self.obtener_linea(inicio)
-
                 self.tabla_errores.insert("", "end", values=(
                     linea, "LÉXICO", item["mensaje"]
                 ))
@@ -363,26 +364,16 @@ class AppAnalizador:
         for err in errores_semanticos:
             self.tabla_errores.insert("", "end", values=(
                 err["linea"], "SEMÁNTICO", f"{err.get('codigo','')}: {err['mensaje']}"
-        ))
-        
-        self.tabla_simbolos.delete(*self.tabla_simbolos.get_children())
-        for nombre, datos in self.semantico.tabla_simbolos.items():
-            valores = ", ".join(f"{k}={v['valor']} ({v['tipo']})"for k, v in datos["valor"].items()
-)
-
-
-            self.tabla_simbolos.insert("", "end", values=(
-                nombre,
-                datos["categoria"],
-                valores
             ))
 
-        print("TOKENS:", res["desglose"])
-        print("SINTÁCTICOS:", errores_sintacticos)
-        print("SEMÁNTICOS:", errores_semanticos)
-        print("TABLA SIMBOLOS:", self.semantico.tabla_simbolos)
-
-        
+        self.tabla_simbolos.delete(*self.tabla_simbolos.get_children())
+        for nombre, datos in self.semantico.tabla_simbolos.items():
+            valores = ", ".join(
+                f"{k}={v['valor']} ({v['tipo']})" for k, v in datos["valor"].items()
+            )
+            self.tabla_simbolos.insert("", "end", values=(
+                nombre, datos["categoria"], valores
+            ))
     
     def verificar_tooltip(self, event):
         index = self.txt_input.index(f"@{event.x},{event.y}")
@@ -404,39 +395,7 @@ class AppAnalizador:
                         return
         self.tooltip.hide_tip()
     
-    def analizar_en_tiempo_real(self, event=None):
-        codigo = self.txt_input.get("1.0", "end-1c")
-        if not codigo.strip():
-            return
 
-        res = self.analizador.analizar(codigo)
-        errores_sintacticos = self.sintactico.analizar(res["desglose"])
-
-        for item in self.tabla_errores.get_children():
-            self.tabla_errores.delete(item)
-
-        for item in res["desglose"]:
-            if "ERROR" in item["token"]:
-                inicio = item["rango"][0]
-                linea = self.obtener_linea(inicio)
-                self.tabla_errores.insert("", "end", values=(
-                    linea, "LÉXICO", item["mensaje"]
-                ))
-
-        for err in errores_sintacticos:
-            self.tabla_errores.insert("", "end", values=(
-                err["linea"], "SINTÁCTICO", err["mensaje"]
-            ))
-
-        if not errores_sintacticos:
-            errores_semanticos = self.semantico.analizar(res["desglose"])
-        else:
-            errores_semanticos = []
-
-        for err in errores_semanticos:
-            self.tabla_errores.insert("", "end", values=(
-                err["linea"], "SEMÁNTICO", err["mensaje"]
-            ))
 
 if __name__ == "__main__":
     root = tk.Tk()
