@@ -10,10 +10,11 @@ class AnalizadorLexico:
         
         self.reglas_lexicas = [
             ('COMENTARIO', r'--.*'),
+            ('CADENA', r'"[^"\n]*"'),
             ('ERROR_ID_NUM',  r'\d+[a-zA-Z_][a-zA-Z0-9_]*'), 
             ('OP_COMPARACION',r'==|!=|>=|<=|>|<'),             
             ('OPERADOR',      r'[\+\-\*\/]'),               
-            ('SIMBOLO',       r'[\{\}\(\)\;\:\=\,]'),       
+            ('SIMBOLO',       r'[\{\}\(\)\;\:\=\,\.]'),       
             ('NUMERO',        r'\d+'),                      
             ('IDENTIFICADOR', r'[a-zA-Z_][a-zA-Z0-9_]*'),  
             ('ESPACIO',       r'[ \t\n]+'),                  
@@ -74,6 +75,13 @@ class AnalizadorLexico:
                 
             elif tipo_token == 'OPERADOR':
                 resultados.append({"lexema": lexema, "token": "OPERADOR", "linea": linea_actual})
+            
+            elif tipo_token == 'CADENA':
+                resultados.append({
+                    "lexema": lexema.strip('"'),
+                    "token": "CADENA",
+                    "linea": linea_actual
+    })
 
         return {
             "aprobado": aprobado,

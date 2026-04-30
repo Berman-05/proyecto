@@ -3,6 +3,7 @@ from tkinter import ttk, font
 from analizador import AnalizadorLexico
 from sintactico import AnalizadorSintactico
 from arbol import PestanaArbol, construir_arbol_desde_tokens, arbol_a_texto
+from semantico import AnalizadorSemantico
 
 class LineNumberCanvas(tk.Canvas):
     def __init__(self, *args, **kwargs):
@@ -53,9 +54,10 @@ class AppAnalizador:
         self.root = root
         self.analizador = AnalizadorLexico()
         self.sintactico = AnalizadorSintactico()
+        self.semantico = AnalizadorSemantico()
 
         self.root.title("RPG Script Lexer Pro")
-        self.root.geometry("1100x700")
+        self.root.geometry("1100x750")
         self.root.configure(bg="#0f172a")
 
         self.fuente_mono   = font.Font(family="Consolas",  size=11)
@@ -65,6 +67,7 @@ class AppAnalizador:
         self.fuente_arbol_rama = font.Font(family="Segoe UI", size=9, weight="bold")
         self.fuente_arbol_hoja = font.Font(family="Consolas", size=10)
 
+        self._debounce_id = None
         self.create_widgets()
         self.setup_styles()
 
@@ -90,10 +93,8 @@ class AppAnalizador:
 
         for err in errores_sintacticos:
             linea = err.get("linea", 1)
-
             inicio = f"{linea}.0"
             fin = f"{linea}.end"
-
             self.txt_input.tag_add("error_sintactico", inicio, fin)
     
     def obtener_linea(self, posicion):
@@ -117,7 +118,7 @@ class AppAnalizador:
         self.style.configure("Treeview",
                         background="#020617", foreground="#e2e8f0",
                         fieldbackground="#020617", rowheight=25,
-                        font=self.fuente_mono) 
+                        font=self.fuente_mono)
         self.style.map("Treeview", background=[('selected', '#3b82f6')])
         self.style.configure("Treeview.Heading",
                         background="#1e293b", foreground="#38bdf8",
@@ -140,11 +141,11 @@ class AppAnalizador:
         frame_fuente = tk.Frame(header, bg="#1e293b")
         frame_fuente.pack(side="right", padx=20, pady=15)
         
-        tk.Label(frame_fuente, text="Tamaño:", bg="#1e293b", fg="#94a3b8", 
+        tk.Label(frame_fuente, text="Tamaño:", bg="#1e293b", fg="#94a3b8",
                  font=self.fuente_ui).pack(side="left", padx=(0, 5))
         
         self.var_tamano_fuente = tk.IntVar(value=self.fuente_mono.cget("size"))
-        spin_fuente = tk.Spinbox(frame_fuente, from_=8, to=48, 
+        spin_fuente = tk.Spinbox(frame_fuente, from_=8, to=48,
                                  textvariable=self.var_tamano_fuente,
                                  width=4, font=self.fuente_ui,
                                  command=self.actualizar_fuente,
@@ -160,18 +161,15 @@ class AppAnalizador:
                                    font=self.fuente_ui)
         self.lbl_status.pack(side="left", padx=20)
 
-        self.btn_analizar = tk.Button(footer, text="EJECUTAR ANÁLISIS",
-                                      command=self.ejecutar,
-                                      bg="#3b82f6", fg="white",
-                                      font=("Segoe UI", 10, "bold"),
-                                      relief="flat", padx=25, pady=8,
-                                      cursor="hand2",
-                                      activebackground="#2563eb",
-                                      activeforeground="white")
-        self.btn_analizar.pack(side="right", padx=20, pady=10)
+        self.outer_paned = ttk.PanedWindow(self.root, orient="vertical")
+        self.outer_paned.pack(fill="both", expand=True, padx=20, pady=(14, 0))
 
-        self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill="both", expand=True, padx=20, pady=(14, 0))
+        # Parte superior: notebook con pestañas
+        top_frame = ttk.Frame(self.outer_paned, style="TFrame")
+        self.outer_paned.add(top_frame, weight=4)
+
+        self.notebook = ttk.Notebook(top_frame)
+        self.notebook.pack(fill="both", expand=True)
 
         tab_editor = ttk.Frame(self.notebook, style="TFrame")
         self.notebook.add(tab_editor, text="  Editor & Tokens  ")
@@ -179,10 +177,10 @@ class AppAnalizador:
         main_paned = ttk.PanedWindow(tab_editor, orient="horizontal")
         main_paned.pack(fill="both", expand=True, pady=14)
 
-        left_panel = ttk.Frame(main_paned, style="TFrame")
+        left_panel  = ttk.Frame(main_paned, style="TFrame")
         right_panel = ttk.Frame(main_paned, style="TFrame")
 
-        main_paned.add(left_panel, weight=1)
+        main_paned.add(left_panel,  weight=1)
         main_paned.add(right_panel, weight=1)
 
         tk.Label(left_panel, text="EDITOR DE SCRIPT",
@@ -208,8 +206,9 @@ class AppAnalizador:
         self.txt_input.bind("<KeyRelease>", lambda e: self.line_numbers.redraw())
         self.txt_input.bind("<MouseWheel>", lambda e: self.line_numbers.redraw())
         self.txt_input.bind("<KeyRelease>", self.resaltar_errores, add="+")
-        self.txt_input.bind("<KeyRelease>", self.analizar_en_tiempo_real, add="+")
+        self.txt_input.bind("<KeyRelease>", self._programar_analisis, add="+")
 
+        # tabla de tokens
         tk.Label(right_panel, text="TOKENS DETECTADOS",
                  bg="#0f172a", fg="#38bdf8",
                  font=self.fuente_ui).pack(anchor="w", pady=(0, 5), padx=(5, 0))
@@ -230,44 +229,78 @@ class AppAnalizador:
         self.tabla_tokens.pack(side="left", fill="both", expand=True)
         scroll_tabla.pack(side="right", fill="y")
 
+        #arbol sintactico
         self.pestana_arbol = PestanaArbol(self.notebook, self.fuente_ui)
         self.notebook.add(self.pestana_arbol.frame, text="  Árbol Sintáctico  ")
+
+        # arbol en texto 
+        tab_arbol_texto = ttk.Frame(self.notebook, style="TFrame")
+        self.notebook.add(tab_arbol_texto, text="  Árbol Texto  ")
+
+        self.txt_arbol = tk.Text(tab_arbol_texto,
+                                font=self.fuente_mono,
+                                bg="#020617", fg="#e2e8f0",
+                                relief="flat", padx=10, pady=10)
+        self.txt_arbol.pack(fill="both", expand=True, padx=10, pady=10)
+        self.txt_arbol.tag_configure("error", foreground="#f43f5e")
+
+        #tabla de simbolos
+        tab_simbolos = ttk.Frame(self.notebook, style="TFrame")
+        self.notebook.add(tab_simbolos, text="  Tabla de Símbolos  ")
+
+        cols = ("identificador", "categoria", "atributo", "valor", "tipo")
+        self.tabla_simbolos = ttk.Treeview(tab_simbolos, columns=cols, show="headings")
+        self.tabla_simbolos.heading("identificador", text="IDENTIFICADOR")
+        self.tabla_simbolos.heading("categoria",     text="CATEGORÍA")
+        self.tabla_simbolos.heading("atributo",      text="ATRIBUTO")
+        self.tabla_simbolos.heading("valor",         text="VALOR")
+        self.tabla_simbolos.heading("tipo",          text="TIPO")
+        self.tabla_simbolos.column("identificador", width=120, stretch=False)
+        self.tabla_simbolos.column("categoria",     width=110, stretch=False)
+        self.tabla_simbolos.column("atributo",      width=90,  stretch=False)
+        self.tabla_simbolos.column("valor",         width=90,  stretch=False)
+        self.tabla_simbolos.column("tipo",          width=70,  stretch=True)
+        self.tabla_simbolos.pack(fill="both", expand=True, padx=10, pady=10)
+
+        bottom_frame = ttk.Frame(self.outer_paned, style="TFrame")
+        self.outer_paned.add(bottom_frame, weight=1)
+
+        # seccion de errorez
+        errores_header = tk.Frame(bottom_frame, bg="#020617")
+        errores_header.pack(fill="x")
+
+        tk.Label(errores_header, text="▲▼  ERRORES",
+                 bg="#020617", fg="#f43f5e",
+                 font=self.fuente_ui, cursor="sb_v_double_arrow"
+                 ).pack(side="left", anchor="w", padx=6, pady=(4, 2))
+
+        # tabla de errores
+        errores_tabla_frame = tk.Frame(bottom_frame, bg="#020617")
+        errores_tabla_frame.pack(fill="both", expand=True, padx=6, pady=(0, 6))
+
+        cols_err = ("linea", "tipo", "descripcion")
+        self.tabla_errores = ttk.Treeview(errores_tabla_frame, columns=cols_err, show="headings")
+        self.tabla_errores.heading("linea",       text="Línea")
+        self.tabla_errores.heading("tipo",        text="Tipo")
+        self.tabla_errores.heading("descripcion", text="Descripción")
+        self.tabla_errores.column("linea",       width=60,  stretch=False)
+        self.tabla_errores.column("tipo",        width=110, stretch=False)
+        self.tabla_errores.column("descripcion", width=600, stretch=True)
+
+        scroll_err = ttk.Scrollbar(errores_tabla_frame, orient="vertical",
+                                   command=self.tabla_errores.yview)
+        self.tabla_errores.configure(yscrollcommand=scroll_err.set)
+        self.tabla_errores.pack(side="left", fill="both", expand=True)
+        scroll_err.pack(side="right", fill="y")
 
         self.root.after(200, self.line_numbers.redraw)
 
         self.tooltip = ToolTip(self.txt_input)
         self.txt_input.bind("<Motion>", self.verificar_tooltip)
 
-        tab_arbol_texto = ttk.Frame(self.notebook, style="TFrame")
-        self.notebook.add(tab_arbol_texto, text="  Árbol Texto  ")
-
-        self.txt_arbol = tk.Text(tab_arbol_texto,
-                                font = self.fuente_mono,
-                                bg="#020617", fg="#e2e8f0",
-                                relief="flat", padx=10, pady=10)
-        self.txt_arbol.pack(fill="both", expand=True, padx=10, pady=10)
-        self.txt_arbol.tag_configure("error", foreground="#f43f5e")
-
-        frame_errores = tk.Frame(self.root, bg="#020617", height=120)
-        frame_errores.pack(fill="x", padx=20, pady=(0,10))
-
-        tk.Label(frame_errores, text="ERRORES",
-                bg="#020617", fg="#f43f5e",
-                font=self.fuente_ui).pack(anchor="w")
-
-        cols = ("linea", "tipo", "descripcion")
-        self.tabla_errores = ttk.Treeview(frame_errores, columns=cols, show="headings")
-
-        self.tabla_errores.heading("linea", text="Línea")
-        self.tabla_errores.heading("tipo", text="Tipo")
-        self.tabla_errores.heading("descripcion", text="Descripción")
-
-        self.tabla_errores.pack(fill="x")
-
     def actualizar_fuente(self):
         try:
             nuevo_tamano = self.var_tamano_fuente.get()
-            
             self.fuente_mono.configure(size=nuevo_tamano)
             self.txt_arbol.config(font=self.fuente_mono)
             self.line_numbers.redraw()
@@ -282,22 +315,37 @@ class AppAnalizador:
             self.fuente_arbol_rama.configure(size=tamano_rama)
             self.fuente_arbol_hoja.configure(size=nuevo_tamano)
             self.pestana_arbol.redibujar_con_fuente(self.fuente_arbol_rama, self.fuente_arbol_hoja)
-            
-            
         except tk.TclError:
-            pass 
+            pass
+
+    def _programar_analisis(self, event=None):
+        if self._debounce_id is not None:
+            self.root.after_cancel(self._debounce_id)
+        self._debounce_id = self.root.after(300, self.ejecutar)
 
     def ejecutar(self):
+        self._debounce_id = None
         codigo = self.txt_input.get("1.0", "end-1c")
+
         if not codigo.strip():
+            for item in self.tabla_tokens.get_children():
+                self.tabla_tokens.delete(item)
+            for item in self.tabla_errores.get_children():
+                self.tabla_errores.delete(item)
+            self.tabla_simbolos.delete(*self.tabla_simbolos.get_children())
+            self.txt_arbol.delete("1.0", "end")
+            self.lbl_status.config(text="● Sistema listo", fg="#94a3b8")
             return
 
         res = self.analizador.analizar(codigo)
         errores_sintacticos = self.sintactico.analizar(res["desglose"])
+        if errores_sintacticos:
+            errores_semanticos = []
+        else:
+            errores_semanticos = self.semantico.analizar(res["desglose"])
 
         for item in self.tabla_tokens.get_children():
             self.tabla_tokens.delete(item)
-
         for item in res["desglose"]:
             token  = item["token"]
             lexema = item["lexema"]
@@ -307,17 +355,13 @@ class AppAnalizador:
         arbol = construir_arbol_desde_tokens(res)
         self.pestana_arbol.mostrar(arbol, self.fuente_arbol_rama, self.fuente_arbol_hoja)
 
-        if res["aprobado"] and not errores_sintacticos:
+        if res["aprobado"] and not errores_sintacticos and not errores_semanticos:
             self.lbl_status.config(text="● ANÁLISIS EXITOSO", fg="#10b981")
-            self.btn_analizar.config(bg="#10b981")
         else:
-            self.lbl_status.config(text="● ERRORES ENCONTRADOS", fg="#f43f5e")
-            self.btn_analizar.config(bg="#f43f5e")
+            self.lbl_status.config(text="● ERRORES ENCONTRADOS (ANÁLISIS DETENIDO)", fg="#f43f5e")
 
         lineas = arbol_a_texto(arbol)
-
         self.txt_arbol.delete("1.0", "end")
-
         for texto, es_error in lineas:
             if es_error:
                 self.txt_arbol.insert("end", texto + "\n", "error")
@@ -327,14 +371,10 @@ class AppAnalizador:
         for item in self.tabla_errores.get_children():
             self.tabla_errores.delete(item)
 
-        for item in self.tabla_errores.get_children():
-            self.tabla_errores.delete(item)
-
         for item in res["desglose"]:
             if "ERROR" in item["token"]:
                 inicio = item["rango"][0]
                 linea = self.obtener_linea(inicio)
-
                 self.tabla_errores.insert("", "end", values=(
                     linea, "LÉXICO", item["mensaje"]
                 ))
@@ -344,9 +384,17 @@ class AppAnalizador:
                 err["linea"], "SINTÁCTICO", err["mensaje"]
             ))
 
-        
-        print("TOKENS:", res["desglose"])
-        print("SINTÁCTICOS:", errores_sintacticos)
+        for err in errores_semanticos:
+            self.tabla_errores.insert("", "end", values=(
+                err["linea"], "SEMÁNTICO", f"{err.get('codigo','')}: {err['mensaje']}"
+            ))
+
+        self.tabla_simbolos.delete(*self.tabla_simbolos.get_children())
+        for nombre, datos in self.semantico.tabla_simbolos.items():
+            for atributo, info in datos["valor"].items():
+                self.tabla_simbolos.insert("", "end", values=(
+                    nombre, datos["categoria"], atributo, info["valor"], info["tipo"]
+                ))
     
     def verificar_tooltip(self, event):
         index = self.txt_input.index(f"@{event.x},{event.y}")
@@ -355,6 +403,8 @@ class AppAnalizador:
         if "error_subrayado" in tags:
             linea, col = map(int, index.split('.'))
             pos_plana = len(self.txt_input.get("1.0", f"{linea}.0")) + col
+            if not hasattr(self.analizador, "ultimo_resultado"):
+                return
             for item in self.analizador.ultimo_resultado.get("desglose", []):
                 if "rango" in item:
                     inicio, fin = item["rango"]
@@ -365,29 +415,7 @@ class AppAnalizador:
                         )
                         return
         self.tooltip.hide_tip()
-    
-    def analizar_en_tiempo_real(self, event=None):
-        codigo = self.txt_input.get("1.0", "end-1c")
-        if not codigo.strip():
-            return
 
-        res = self.analizador.analizar(codigo)
-        errores_sintacticos = self.sintactico.analizar(res["desglose"])
-
-        for item in self.tabla_errores.get_children():
-            self.tabla_errores.delete(item)
-
-        for item in res["desglose"]:
-            if "ERROR" in item["token"]:
-                linea = item.get("linea", 1)
-                self.tabla_errores.insert("", "end", values=(
-                    linea, "LÉXICO", item["mensaje"]
-                ))
-
-        for err in errores_sintacticos:
-            self.tabla_errores.insert("", "end", values=(
-                err["linea"], "SINTÁCTICO", err["mensaje"]
-            ))
 
 if __name__ == "__main__":
     root = tk.Tk()
