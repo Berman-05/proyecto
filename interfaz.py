@@ -131,6 +131,7 @@ class AppAnalizador:
                                      underline=True)
 
     def create_widgets(self):
+        # ── HEADER ──────────────────────────────────────────────────────────
         header = tk.Frame(self.root, bg="#1e293b", height=60)
         header.pack(fill="x", side="top")
         tk.Label(header,
@@ -153,6 +154,7 @@ class AppAnalizador:
         spin_fuente.pack(side="left")
         spin_fuente.bind("<Return>", lambda e: self.actualizar_fuente())
 
+        # ── FOOTER ──────────────────────────────────────────────────────────
         footer = tk.Frame(self.root, bg="#1e293b", height=50)
         footer.pack(fill="x", side="bottom")
 
@@ -161,6 +163,9 @@ class AppAnalizador:
                                    font=self.fuente_ui)
         self.lbl_status.pack(side="left", padx=20)
 
+        # ── CONTENEDOR PRINCIPAL (notebook + errores redimensionable) ────────
+        # Usamos un PanedWindow VERTICAL para que la sección de errores
+        # se pueda arrastrar hacia arriba / abajo.
         self.outer_paned = ttk.PanedWindow(self.root, orient="vertical")
         self.outer_paned.pack(fill="both", expand=True, padx=20, pady=(14, 0))
 
@@ -171,9 +176,11 @@ class AppAnalizador:
         self.notebook = ttk.Notebook(top_frame)
         self.notebook.pack(fill="both", expand=True)
 
+        # ── TAB: EDITOR & TOKENS ────────────────────────────────────────────
         tab_editor = ttk.Frame(self.notebook, style="TFrame")
         self.notebook.add(tab_editor, text="  Editor & Tokens  ")
 
+        # PanedWindow HORIZONTAL para editor ↔ tokens (redimensionable)
         main_paned = ttk.PanedWindow(tab_editor, orient="horizontal")
         main_paned.pack(fill="both", expand=True, pady=14)
 
@@ -183,6 +190,7 @@ class AppAnalizador:
         main_paned.add(left_panel,  weight=1)
         main_paned.add(right_panel, weight=1)
 
+        # — Panel izquierdo: editor de script —
         tk.Label(left_panel, text="EDITOR DE SCRIPT",
                  bg="#0f172a", fg="#38bdf8",
                  font=self.fuente_ui).pack(anchor="w", pady=(0, 5))
@@ -208,7 +216,7 @@ class AppAnalizador:
         self.txt_input.bind("<KeyRelease>", self.resaltar_errores, add="+")
         self.txt_input.bind("<KeyRelease>", self._programar_analisis, add="+")
 
-        # tabla de tokens
+        # — Panel derecho: tabla de tokens —
         tk.Label(right_panel, text="TOKENS DETECTADOS",
                  bg="#0f172a", fg="#38bdf8",
                  font=self.fuente_ui).pack(anchor="w", pady=(0, 5), padx=(5, 0))
@@ -229,11 +237,11 @@ class AppAnalizador:
         self.tabla_tokens.pack(side="left", fill="both", expand=True)
         scroll_tabla.pack(side="right", fill="y")
 
-        #arbol sintactico
+        # ── TAB: ÁRBOL SINTÁCTICO ────────────────────────────────────────────
         self.pestana_arbol = PestanaArbol(self.notebook, self.fuente_ui)
         self.notebook.add(self.pestana_arbol.frame, text="  Árbol Sintáctico  ")
 
-        # arbol en texto 
+        # ── TAB: ÁRBOL TEXTO ─────────────────────────────────────────────────
         tab_arbol_texto = ttk.Frame(self.notebook, style="TFrame")
         self.notebook.add(tab_arbol_texto, text="  Árbol Texto  ")
 
@@ -244,7 +252,7 @@ class AppAnalizador:
         self.txt_arbol.pack(fill="both", expand=True, padx=10, pady=10)
         self.txt_arbol.tag_configure("error", foreground="#f43f5e")
 
-        #tabla de simbolos
+        # ── TAB: TABLA DE SÍMBOLOS ───────────────────────────────────────────
         tab_simbolos = ttk.Frame(self.notebook, style="TFrame")
         self.notebook.add(tab_simbolos, text="  Tabla de Símbolos  ")
 
@@ -262,19 +270,21 @@ class AppAnalizador:
         self.tabla_simbolos.column("tipo",          width=70,  stretch=True)
         self.tabla_simbolos.pack(fill="both", expand=True, padx=10, pady=10)
 
+        # ── PARTE INFERIOR: PANEL DE ERRORES (redimensionable) ───────────────
         bottom_frame = ttk.Frame(self.outer_paned, style="TFrame")
         self.outer_paned.add(bottom_frame, weight=1)
 
-        # seccion de errorez
+        # Etiqueta de sección errores con handle visual de redimensión
         errores_header = tk.Frame(bottom_frame, bg="#020617")
         errores_header.pack(fill="x")
 
+        # Grip visual para indicar que se puede redimensionar
         tk.Label(errores_header, text="▲▼  ERRORES",
                  bg="#020617", fg="#f43f5e",
                  font=self.fuente_ui, cursor="sb_v_double_arrow"
                  ).pack(side="left", anchor="w", padx=6, pady=(4, 2))
 
-        # tabla de errores
+        # Scrollbar + tabla de errores
         errores_tabla_frame = tk.Frame(bottom_frame, bg="#020617")
         errores_tabla_frame.pack(fill="both", expand=True, padx=6, pady=(0, 6))
 
@@ -293,6 +303,7 @@ class AppAnalizador:
         self.tabla_errores.pack(side="left", fill="both", expand=True)
         scroll_err.pack(side="right", fill="y")
 
+        # ── TOOLTIPS & LINE NUMBERS ──────────────────────────────────────────
         self.root.after(200, self.line_numbers.redraw)
 
         self.tooltip = ToolTip(self.txt_input)
@@ -391,10 +402,18 @@ class AppAnalizador:
 
         self.tabla_simbolos.delete(*self.tabla_simbolos.get_children())
         for nombre, datos in self.semantico.tabla_simbolos.items():
-            for atributo, info in datos["valor"].items():
-                self.tabla_simbolos.insert("", "end", values=(
-                    nombre, datos["categoria"], atributo, info["valor"], info["tipo"]
-                ))
+            categoria = datos["categoria"]
+            if categoria == "variable_global":
+                slot = datos["valor"].get("_val")
+                if slot:
+                    self.tabla_simbolos.insert("", "end", values=(
+                        nombre, "variable_global", "-", slot["valor"], slot["tipo"]
+                    ))
+            else:
+                for atributo, info in datos["valor"].items():
+                    self.tabla_simbolos.insert("", "end", values=(
+                        nombre, categoria, atributo, info["valor"], info["tipo"]
+                    ))
     
     def verificar_tooltip(self, event):
         index = self.txt_input.index(f"@{event.x},{event.y}")

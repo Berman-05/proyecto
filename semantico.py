@@ -6,20 +6,20 @@ class AnalizadorSemantico:
         self.identificador_actual = None
 
         self.propiedades_validas = {
-            "personaje": {"HP", "MP", "XP"},
-            "habilidad": {"dano"},
-            "estado":    {"efecto"},
-            "objeto":    set(),
-            "mision":    set(),
-            "combate":   set()
+            "personaje": None,
+            "habilidad": None,
+            "estado":    None,
+            "objeto":    None,
+            "mision":    None,
+            "combate":   None,
         }
 
-        self.tipos_propiedades = {
+        self.tipos_propiedades_fijos = {
             "HP":     "int",
             "MP":     "int",
             "XP":     "int",
             "dano":   "int",
-            "efecto": "string"
+            "efecto": "string",
         }
 
     def analizar(self, tokens):
@@ -27,6 +27,8 @@ class AnalizadorSemantico:
         self.errores = []
         self.contexto_actual = None
         self.identificador_actual = None
+
+        self._registrar_variables_globales(tokens)
 
         i = 0
         while i < len(tokens):
@@ -67,270 +69,271 @@ class AnalizadorSemantico:
                 i += 1
                 continue
 
-            if tipo == "IDENTIFICADOR" and not self.contexto_actual:
-                resultado = self._intentar_asignacion_punto(tokens, i, linea)
-                if resultado is not None:
-                    i = resultado
+            if self.contexto_actual and tipo in ("IDENTIFICADOR", "PALABRA_RESERVADA"):
+                if (i + 1 < len(tokens) and tokens[i+1]["lexema"] == "=" and
+                        not (i + 2 < len(tokens) and tokens[i+2]["lexema"] == ".")):
+                    i = self._procesar_asignacion_declaracion(tokens, i, linea, lexema)
                     continue
 
-            if tipo == "PALABRA_RESERVADA" and self.contexto_actual:
-                propiedad = lexema
-                if propiedad not in self.propiedades_validas[self.contexto_actual]:
-                    self.errores.append(self._error(linea, "E04",
-                        f"Propiedad '{propiedad}' no valida en {self.contexto_actual}"))
-                    i += 1
-                    continue
-                i = self._procesar_asignacion_declaracion(tokens, i, linea, propiedad)
-                continue
+            if not self.contexto_actual:
+                if (tipo == "IDENTIFICADOR" and
+                        i + 2 < len(tokens) and
+                        tokens[i+1]["lexema"] == "." and
+                        tokens[i+2]["token"] in ("IDENTIFICADOR", "PALABRA_RESERVADA")):
+                    resultado = self._intentar_asignacion_punto(tokens, i, linea)
+                    if resultado is not None:
+                        i = resultado
+                        continue
 
-            if tipo == "PALABRA_RESERVADA" and not self.contexto_actual:
-                if lexema not in ("condicion", "condicion"):
-                    self.errores.append(self._error(linea, "E07",
-                        f"'{lexema}' fuera de un bloque"))
+                if tipo == "IDENTIFICADOR":
+                    resultado = self._intentar_asignacion_variable(tokens, i, linea)
+                    if resultado is not None:
+                        i = resultado
+                        continue
 
             i += 1
 
         return self.errores
 
+    def _registrar_variables_globales(self, tokens):
+        depth = 0
+        i = 0
+        while i < len(tokens):
+            tok    = tokens[i]
+            lexema = tok["lexema"]
+            tipo   = tok["token"]
+            if lexema == "{":
+                depth += 1
+            elif lexema == "}":
+                depth -= 1
+            elif (depth == 0 and tipo == "IDENTIFICADOR" and
+                  i + 2 < len(tokens) and
+                  tokens[i+1]["lexema"] == "=" and
+                  not (i + 2 < len(tokens) and tokens[i+2]["lexema"] == ".")):
+                nombre = lexema
+                if nombre not in self.tabla_simbolos:
+                    self.tabla_simbolos[nombre] = {
+                        "categoria": "variable_global",
+                        "tipo":      "unknown",
+                        "valor":     {}
+                    }
+            i += 1
+
+    def _intentar_asignacion_variable(self, tokens, i, linea):
+        if i + 2 >= len(tokens):
+            return None
+        if tokens[i+1]["lexema"] != "=":
+            return None
+        nombre = tokens[i]["lexema"]
+        j = i + 2
+        valor, j = self._leer_expresion_aritmetica(tokens, j, linea)
+        if valor is None:
+            return self._saltar_hasta_punto_coma(tokens, j)
+        tipo_val  = "int" if isinstance(valor, (int, float)) else "string"
+        valor_fin = int(valor) if isinstance(valor, float) and valor == int(valor) else valor
+        if nombre not in self.tabla_simbolos:
+            self.tabla_simbolos[nombre] = {
+                "categoria": "variable_global",
+                "tipo":      tipo_val,
+                "valor":     {}
+            }
+        else:
+            self.tabla_simbolos[nombre]["tipo"] = tipo_val
+        self.tabla_simbolos[nombre]["valor"]["_val"] = {"valor": valor_fin, "tipo": tipo_val}
+        if j < len(tokens) and tokens[j]["lexema"] == ";":
+            j += 1
+        return j
+
     def _procesar_condicion(self, tokens, i, linea):
-        """
-        Formas:
-          condicion Ent.Prop OP valor ;
-          condicion Ent.Prop OP Ent2.Prop2 ;
-          condicion Ent.Prop OP valor { ... }
-        """
         j = i + 1
-
         izq, j = self._leer_valor_expr(tokens, j, linea)
-        if izq is None:
-            return None, j
-
         if j >= len(tokens) or tokens[j]["token"] != "OPERADOR_COMPARACION":
-            return None, j + 1
-
+            if j < len(tokens) and tokens[j]["lexema"] == ";":
+                return None, j + 1
+            return None, j
         operador = tokens[j]["lexema"]
         j += 1
-
         der, j = self._leer_valor_expr(tokens, j, linea)
-        if der is None:
-            return None, j
-
         resultado_cond = None
         if isinstance(izq, (int, float)) and isinstance(der, (int, float)):
             resultado_cond = self._evaluar_op(izq, operador, der)
-
+        elif isinstance(izq, str) and isinstance(der, str):
+            resultado_cond = self._evaluar_op(izq, operador, der)
         if j < len(tokens) and tokens[j]["lexema"] == ";":
             return resultado_cond, j + 1
-
         if j < len(tokens) and tokens[j]["lexema"] == "{":
             j += 1
             if resultado_cond is False:
                 j = self._saltar_bloque(tokens, j)
             return resultado_cond, j
-
         return None, j
 
     def _intentar_asignacion_punto(self, tokens, i, linea):
-        if i + 4 >= len(tokens):
+        if i + 4 > len(tokens):
             return None
-
-        t0 = tokens[i]
-        t1 = tokens[i+1]
-        t2 = tokens[i+2]
-        t3 = tokens[i+3]
-
+        t0, t1, t2, t3 = tokens[i], tokens[i+1], tokens[i+2], tokens[i+3]
         if t1["lexema"] != "." or t3["lexema"] != "=":
             return None
         if t2["token"] not in ("IDENTIFICADOR", "PALABRA_RESERVADA"):
             return None
-
         entidad   = t0["lexema"]
         propiedad = t2["lexema"]
-
         if entidad not in self.tabla_simbolos:
             self.errores.append(self._error(linea, "E01",
                 f"Variable '{entidad}' no declarada"))
             return self._saltar_hasta_punto_coma(tokens, i + 4)
-
         entrada = self.tabla_simbolos[entidad]
-        props_validas = self.propiedades_validas.get(entrada["categoria"], set())
-
-        if propiedad not in props_validas:
-            self.errores.append(self._error(linea, "E04",
-                f"Propiedad '{propiedad}' no valida en {entrada['categoria']}"))
+        if entrada["categoria"] == "variable_global":
+            self.errores.append(self._error(linea, "E01",
+                f"'{entidad}' es una variable global, no un objeto"))
             return self._saltar_hasta_punto_coma(tokens, i + 4)
-
         j = i + 4
         valor, j = self._leer_expresion_aritmetica(tokens, j, linea)
-
         if valor is None:
             return self._saltar_hasta_punto_coma(tokens, j)
-
-        tipo_esp = self.tipos_propiedades.get(propiedad)
+        tipo_esp = self.tipos_propiedades_fijos.get(propiedad)
         if tipo_esp == "int" and not isinstance(valor, (int, float)):
-            self.errores.append(self._error(linea, "E05",
-                f"'{propiedad}' debe ser numerico"))
+            self.errores.append(self._error(linea, "E05", f"'{propiedad}' debe ser numérico"))
             return self._saltar_hasta_punto_coma(tokens, j)
         if tipo_esp == "string" and not isinstance(valor, str):
-            self.errores.append(self._error(linea, "E05",
-                f"'{propiedad}' debe ser texto"))
+            self.errores.append(self._error(linea, "E05", f"'{propiedad}' debe ser texto"))
             return self._saltar_hasta_punto_coma(tokens, j)
-
-        tipo_real = "int" if isinstance(valor, (int, float)) else "string"
-        valor_final = int(valor) if isinstance(valor, float) and valor == int(valor) else valor
-        self.tabla_simbolos[entidad]["valor"][propiedad] = {
-            "valor": valor_final,
-            "tipo":  tipo_real
-        }
-
+        tipo_real  = "int" if isinstance(valor, (int, float)) else "string"
+        valor_fin  = int(valor) if isinstance(valor, float) and valor == int(valor) else valor
+        self.tabla_simbolos[entidad]["valor"][propiedad] = {"valor": valor_fin, "tipo": tipo_real}
         if j < len(tokens) and tokens[j]["lexema"] == ";":
             j += 1
         return j
 
     def _procesar_asignacion_declaracion(self, tokens, i, linea, propiedad):
-        if i + 3 >= len(tokens):
-            self.errores.append(self._error(linea, "E03", "Asignacion incompleta"))
+        if i + 3 > len(tokens):
+            self.errores.append(self._error(linea, "E03", "Asignación incompleta"))
             return i + 1
-
-        operador_tok = tokens[i+1]
-        valor_token  = tokens[i+2]
-
-        if operador_tok["lexema"] != "=":
+        if tokens[i+1]["lexema"] != "=":
             self.errores.append(self._error(linea, "E03", "Se esperaba '='"))
             return i + 1
-
-        tipo_esperado = self.tipos_propiedades.get(propiedad)
-
-        if valor_token["token"] == "NUMERO":
-            valor = int(valor_token["lexema"])
-            if tipo_esperado == "string":
-                self.errores.append(self._error(linea, "E05",
-                    f"{propiedad} debe ser texto"))
-                return i + 4
-
-        elif valor_token["token"] == "IDENTIFICADOR":
-            nombre_ref = valor_token["lexema"]
-            if nombre_ref not in self.tabla_simbolos:
-                self.errores.append(self._error(linea, "E01",
-                    f"Identificador '{nombre_ref}' no declarado"))
-                return i + 4
-            valor = nombre_ref
-
-        elif valor_token["token"] == "CADENA":
-            valor = valor_token["lexema"]
-            if tipo_esperado == "int":
-                self.errores.append(self._error(linea, "E05",
-                    f"{propiedad} debe ser numerico"))
-                return i + 4
-
-        else:
-            self.errores.append(self._error(linea, "E03", "Tipo de dato incompatible"))
-            return i + 4
-
-        if propiedad in self.tabla_simbolos[self.identificador_actual]["valor"]:
-            self.errores.append(self._error(linea, "E06",
-                f"'{propiedad}' ya definida"))
-            return i + 4
-
-        tipo_val = ("int" if isinstance(valor, int)
-                    else "string" if valor_token["token"] == "CADENA"
-                    else "ref")
-
+        j = i + 2
+        valor, j = self._leer_expresion_aritmetica(tokens, j, linea)
+        if valor is None:
+            return self._saltar_hasta_punto_coma(tokens, j)
+        tipo_esp = self.tipos_propiedades_fijos.get(propiedad)
+        if tipo_esp == "int" and not isinstance(valor, (int, float)):
+            self.errores.append(self._error(linea, "E05", f"'{propiedad}' debe ser numérico"))
+            return self._saltar_hasta_punto_coma(tokens, j)
+        if tipo_esp == "string" and not isinstance(valor, str):
+            self.errores.append(self._error(linea, "E05", f"'{propiedad}' debe ser texto"))
+            return self._saltar_hasta_punto_coma(tokens, j)
+        tipo_real = "int" if isinstance(valor, (int, float)) else "string"
+        valor_fin = int(valor) if isinstance(valor, float) and valor == int(valor) else valor
         self.tabla_simbolos[self.identificador_actual]["valor"][propiedad] = {
-            "valor": valor,
-            "tipo":  tipo_val
+            "valor": valor_fin,
+            "tipo":  tipo_real
         }
-        return i + 4
+        if j < len(tokens) and tokens[j]["lexema"] == ";":
+            j += 1
+        return j
 
     def _leer_expresion_aritmetica(self, tokens, j, linea):
         val_izq, j = self._leer_valor_expr(tokens, j, linea)
         if val_izq is None:
             return None, j
-
-        if (j < len(tokens)
-                and tokens[j]["token"] == "OPERADOR"
-                and tokens[j]["lexema"] in ("+", "-")):
+        while (j < len(tokens) and
+               tokens[j]["token"] == "OPERADOR" and
+               tokens[j]["lexema"] in ("+", "-", "*", "/")):
             op  = tokens[j]["lexema"]
             j  += 1
             val_der, j = self._leer_valor_expr(tokens, j, linea)
             if val_der is None:
                 return None, j
             if isinstance(val_izq, (int, float)) and isinstance(val_der, (int, float)):
-                resultado = val_izq + val_der if op == "+" else val_izq - val_der
-                return resultado, j
+                if op == "+":   val_izq = val_izq + val_der
+                elif op == "-": val_izq = val_izq - val_der
+                elif op == "*": val_izq = val_izq * val_der
+                elif op == "/":
+                    if val_der == 0:
+                        self.errores.append(self._error(linea, "E05", "División por cero"))
+                        return None, j
+                    val_izq = val_izq / val_der
+            elif op == "+":
+                val_izq = str(val_izq) + str(val_der)
             else:
                 self.errores.append(self._error(linea, "E05",
-                    "Operacion aritmetica requiere valores numericos"))
+                    "Operación aritmética requiere valores numéricos"))
                 return None, j
-
         return val_izq, j
 
     def _leer_valor_expr(self, tokens, j, linea):
         if j >= len(tokens):
             return None, j
-
         tok = tokens[j]
-
         if tok["token"] == "NUMERO":
             return int(tok["lexema"]), j + 1
-
         if tok["token"] == "CADENA":
             return tok["lexema"], j + 1
-
         if tok["token"] in ("IDENTIFICADOR", "PALABRA_RESERVADA"):
-            entidad = tok["lexema"]
-            if (j + 2 < len(tokens)
-                    and tokens[j+1]["lexema"] == "."
-                    and tokens[j+2]["token"] in ("IDENTIFICADOR", "PALABRA_RESERVADA")):
+            nombre = tok["lexema"]
+            if (j + 2 < len(tokens) and
+                    tokens[j+1]["lexema"] == "." and
+                    tokens[j+2]["token"] in ("IDENTIFICADOR", "PALABRA_RESERVADA")):
                 propiedad = tokens[j+2]["lexema"]
-                valor = self._resolver_prop(entidad, propiedad, linea)
+                valor = self._resolver_prop(nombre, propiedad, linea)
                 return valor, j + 3
-            return entidad, j + 1
-
+            valor = self._resolver_variable(nombre, linea)
+            return valor, j + 1
         return None, j
 
     def _resolver_prop(self, entidad, propiedad, linea):
         if entidad not in self.tabla_simbolos:
             self.errores.append(self._error(linea, "E01",
-                f"Variable '{entidad}' no declarada"))
+                f"Objeto '{entidad}' no declarado"))
             return None
-
         entrada = self.tabla_simbolos[entidad]
-        props_validas = self.propiedades_validas.get(entrada["categoria"], set())
-
-        if propiedad not in props_validas:
-            self.errores.append(self._error(linea, "E04",
-                f"Propiedad '{propiedad}' no valida en {entrada['categoria']}"))
+        if entrada["categoria"] == "variable_global":
+            self.errores.append(self._error(linea, "E01",
+                f"'{entidad}' es una variable global, no un objeto"))
             return None
-
         slot = entrada["valor"].get(propiedad)
         if slot is None:
-            self.errores.append(self._error(linea, "E08",
-                f"'{entidad}.{propiedad}' aun no tiene valor asignado"))
+            self.errores.append(self._error(linea, "E04",
+                f"'{entidad}.{propiedad}' no tiene valor asignado"))
             return None
-
         return slot["valor"]
+
+    def _resolver_variable(self, nombre, linea):
+        if nombre not in self.tabla_simbolos:
+            return nombre
+        entrada = self.tabla_simbolos[nombre]
+        if entrada["categoria"] == "variable_global":
+            slot = entrada["valor"].get("_val")
+            if slot is None:
+                return nombre
+            return slot["valor"]
+        return nombre
 
     @staticmethod
     def _evaluar_op(izq, op, der):
         ops = {
-            ">":  izq > der,
-            "<":  izq < der,
-            ">=": izq >= der,
-            "<=": izq <= der,
-            "==": izq == der,
-            "!=": izq != der
+            ">":  lambda a, b: a > b,
+            "<":  lambda a, b: a < b,
+            ">=": lambda a, b: a >= b,
+            "<=": lambda a, b: a <= b,
+            "==": lambda a, b: a == b,
+            "!=": lambda a, b: a != b,
         }
-        return ops.get(op)
+        fn = ops.get(op)
+        if fn is None:
+            return None
+        try:
+            return fn(izq, der)
+        except TypeError:
+            return None
 
     def _saltar_bloque(self, tokens, j):
         depth = 1
         while j < len(tokens) and depth > 0:
             lex = tokens[j]["lexema"]
-            if lex == "{":
-                depth += 1
-            elif lex == "}":
-                depth -= 1
+            if lex == "{":   depth += 1
+            elif lex == "}": depth -= 1
             j += 1
         return j
 
