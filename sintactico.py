@@ -14,60 +14,49 @@ class AnalizadorSintactico:
                 if lexema == "mision":
                     if not self._esperar(tokens, i+1, "IDENTIFICADOR"):
                         errores.append(self._error(linea, "Se esperaba nombre de misión"))
-                    
                     elif not self._esperar_lexema(tokens, i+2, "{"):
                         errores.append(self._error(linea, "Se esperaba '{' después de misión"))
-                    
                     else:
                         pila_llaves.append(tok)
-                        i += 2  
+                        i += 2
 
                 elif lexema == "objeto":
                     if not self._esperar(tokens, i+1, "IDENTIFICADOR"):
                         errores.append(self._error(linea, "Se esperaba identificador después de 'objeto'"))
-                    
                     elif not self._esperar_lexema(tokens, i+2, ";"):
                         errores.append(self._error(linea, "Falta ';' después de objeto"))
-                    
                     i += 2
 
                 elif lexema == "estado":
                     if not self._esperar(tokens, i+1, "IDENTIFICADOR"):
                         errores.append(self._error(linea, "Se esperaba identificador después de 'estado'"))
-                    
                     elif not self._esperar_lexema(tokens, i+2, "{"):
                         errores.append(self._error(linea, "Se esperaba '{' después de estado"))
-                    
                     else:
                         pila_llaves.append(tok)
                         i += 2
-                        
-                elif lexema in ["condicion", "condición"]:
-                    if not self._esperar(tokens, i+1, "IDENTIFICADOR"):
-                        errores.append(self._error(linea, "Se esperaba variable en condición"))
-                    
-                    elif not self._esperar(tokens, i+2, "OPERADOR_COMPARACION"):
-                        errores.append(self._error(linea, "Se esperaba operador de comparación"))
-                    
-                    elif not self._esperar(tokens, i+3, "NUMERO"):
-                        errores.append(self._error(linea, "Se esperaba número en condición"))
-                    
-                    elif not self._esperar_lexema(tokens, i+4, ";"):
-                        errores.append(self._error(linea, "Falta ';' en condición"))
-                    
-                    i += 4
 
-                elif lexema in ["XP", "HP", "MP"]:
+                elif lexema in ["condicion", "condicion"]:
+                    j = i + 1
+                    j = self._saltar_valor(tokens, j)
+                    if j < len(tokens) and tokens[j]["token"] == "OPERADOR_COMPARACION":
+                        j += 1
+                        j = self._saltar_valor(tokens, j)
+                    if j < len(tokens) and tokens[j]["lexema"] == "{":
+                        pila_llaves.append(tok)
+                        i = j  
+                    elif j < len(tokens) and tokens[j]["lexema"] == ";":
+                        i = j  
+                    else:
+                        i = j
+
+                elif lexema in ["XP", "HP", "MP", "dano", "efecto"]:
                     if not self._esperar_lexema(tokens, i+1, "="):
                         errores.append(self._error(linea, "Se esperaba '='"))
-                    
-                    elif not self._esperar(tokens, i+2, "NUMERO"):
-                        errores.append(self._error(linea, "Se esperaba número"))
-                    
-                    elif not self._esperar_lexema(tokens, i+3, ";"):
-                        errores.append(self._error(linea, "Falta ';'"))
-                    
-                    i += 3
+                    else:
+                        j = i + 2
+                        j = self._saltar_valor(tokens, j)
+                        i = j if j < len(tokens) and tokens[j]["lexema"] == ";" else j - 1
 
             elif lexema == "{":
                 pila_llaves.append(tok)
@@ -77,6 +66,19 @@ class AnalizadorSintactico:
                     errores.append(self._error(linea, "Llave de cierre sin apertura"))
                 else:
                     pila_llaves.pop()
+
+            elif tok["token"] == "IDENTIFICADOR":
+                if (i + 2 < len(tokens)
+                        and tokens[i+1]["lexema"] == "."
+                        and tokens[i+2]["token"] in ("IDENTIFICADOR", "PALABRA_RESERVADA")):
+                    j = i + 3
+                    if j < len(tokens) and tokens[j]["lexema"] == "=":
+                        j += 1
+                        j = self._saltar_valor(tokens, j)
+                        if j < len(tokens) and tokens[j]["token"] == "OPERADOR":
+                            j += 1
+                            j = self._saltar_valor(tokens, j)
+                        i = j if j < len(tokens) and tokens[j]["lexema"] == ";" else j - 1
 
             i += 1
 
@@ -89,15 +91,41 @@ class AnalizadorSintactico:
 
         return errores
 
+    def _saltar_valor(self, tokens, j):
+        """Avanza j sobre un valor simple o acceso Entidad.Propiedad."""
+        if j >= len(tokens):
+            return j
+        tok = tokens[j]
+        if tok["token"] == "NUMERO" or tok["token"] == "CADENA":
+            return j + 1
+        if tok["token"] in ("IDENTIFICADOR", "PALABRA_RESERVADA"):
+            if (j + 2 < len(tokens)
+                    and tokens[j+1]["lexema"] == "."
+                    and tokens[j+2]["token"] in ("IDENTIFICADOR", "PALABRA_RESERVADA")):
+                return j + 3
+            return j + 1
+        return j + 1
+
     def _esperar(self, tokens, index, tipo):
         return index < len(tokens) and tokens[index]["token"] == tipo
 
     def _esperar_lexema(self, tokens, index, lexema):
         return index < len(tokens) and tokens[index]["lexema"] == lexema
 
+    def _esperar_stat(self, tokens, index):
+        """Acepta IDENTIFICADOR normal o palabras reservadas tipo stat (HP, MP, XP)."""
+        if index >= len(tokens):
+            return False
+        t = tokens[index]
+        if t["token"] == "IDENTIFICADOR":
+            return True
+        if t["token"] == "PALABRA_RESERVADA" and t["lexema"] in {"HP", "MP", "XP"}:
+            return True
+        return False
+
     def _error(self, linea, mensaje):
         return {
             "linea": linea,
-            "tipo": "SINTÁCTICO",
+            "tipo": "SINTACTICO",
             "mensaje": mensaje
         }

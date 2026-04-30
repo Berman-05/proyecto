@@ -14,7 +14,7 @@ class AnalizadorLexico:
             ('ERROR_ID_NUM',  r'\d+[a-zA-Z_][a-zA-Z0-9_]*'), 
             ('OP_COMPARACION',r'==|!=|>=|<=|>|<'),             
             ('OPERADOR',      r'[\+\-\*\/]'),               
-            ('SIMBOLO',       r'[\{\}\(\)\;\:\=\,]'),       
+            ('SIMBOLO',       r'[\{\}\(\)\;\:\=\,\.]'),       
             ('NUMERO',        r'\d+'),                      
             ('IDENTIFICADOR', r'[a-zA-Z_][a-zA-Z0-9_]*'),  
             ('ESPACIO',       r'[ \t\n]+'),                  
