@@ -4,6 +4,7 @@ from analizador import AnalizadorLexico
 from sintactico import AnalizadorSintactico
 from arbol import PestanaArbol, construir_arbol_desde_tokens, arbol_a_texto
 from semantico import AnalizadorSemantico
+from interprete import InterpretadorRPG
 
 class LineNumberCanvas(tk.Canvas):
     def __init__(self, *args, **kwargs):
@@ -55,10 +56,13 @@ class AppAnalizador:
         self.analizador = AnalizadorLexico()
         self.sintactico = AnalizadorSintactico()
         self.semantico = AnalizadorSemantico()
+        self.interprete = InterpretadorRPG()
 
         self.root.title("RPG Script Lexer Pro")
         self.root.geometry("1100x750")
         self.root.configure(bg="#0f172a")
+
+        self._tags_arte_creados = set()  # tags de color dinámico ya registrados
 
         self.fuente_mono   = font.Font(family="Consolas",  size=11)
         self.fuente_ui     = font.Font(family="Segoe UI",  size=10)
@@ -264,13 +268,117 @@ class AppAnalizador:
         self.tabla_simbolos.heading("valor",         text="VALOR")
         self.tabla_simbolos.heading("tipo",          text="TIPO")
         self.tabla_simbolos.column("identificador", width=120, stretch=False)
-        self.tabla_simbolos.column("categoria",     width=110, stretch=False)
-        self.tabla_simbolos.column("atributo",      width=90,  stretch=False)
-        self.tabla_simbolos.column("valor",         width=90,  stretch=False)
-        self.tabla_simbolos.column("tipo",          width=70,  stretch=True)
+        self.tabla_simbolos.column("categoria",     width=130, stretch=False)
+        self.tabla_simbolos.column("atributo",      width=110, stretch=False)
+        self.tabla_simbolos.column("valor",         width=220, stretch=True)
+        self.tabla_simbolos.column("tipo",          width=80,  stretch=False)
         self.tabla_simbolos.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # ── PARTE INFERIOR: PANEL DE ERRORES (redimensionable) ───────────────
+        # ── TAB: SALIDA / EJECUCIÓN ──────────────────────────────────────────
+        tab_salida = ttk.Frame(self.notebook, style="TFrame")
+        self.notebook.add(tab_salida, text="  🎮 Salida  ")
+
+        top_salida = tk.Frame(tab_salida, bg="#1e293b", height=36)
+        top_salida.pack(fill="x")
+        tk.Label(top_salida, text="SALIDA DE EJECUCIÓN RPG",
+                 bg="#1e293b", fg="#4ade80",
+                 font=self.fuente_ui).pack(side="left", padx=14, pady=8)
+
+        salida_wrap = tk.Frame(tab_salida, bg="#020617")
+        salida_wrap.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.txt_salida = tk.Text(
+            salida_wrap,
+            font=font.Font(family="Consolas", size=11),
+            bg="#020617", fg="#e2e8f0",
+            relief="flat", padx=14, pady=10,
+            state="disabled", borderwidth=0,
+            wrap="word"
+        )
+        scroll_salida = ttk.Scrollbar(salida_wrap, orient="vertical",
+                                      command=self.txt_salida.yview)
+        self.txt_salida.configure(yscrollcommand=scroll_salida.set)
+        self.txt_salida.pack(side="left", fill="both", expand=True)
+        scroll_salida.pack(side="right", fill="y")
+
+        # Tags de color para la salida del intérprete
+        self.txt_salida.tag_configure("titulo_principal", foreground="#facc15",
+                                      font=font.Font(family="Segoe UI", size=12, weight="bold"))
+        self.txt_salida.tag_configure("cabecera_personaje", foreground="#38bdf8",
+                                      font=font.Font(family="Segoe UI", size=11, weight="bold"))
+        self.txt_salida.tag_configure("cabecera_habilidad", foreground="#fb923c",
+                                      font=font.Font(family="Segoe UI", size=11, weight="bold"))
+        self.txt_salida.tag_configure("cabecera_estado",    foreground="#a78bfa",
+                                      font=font.Font(family="Segoe UI", size=11, weight="bold"))
+        self.txt_salida.tag_configure("cabecera_objeto",    foreground="#4ade80",
+                                      font=font.Font(family="Segoe UI", size=11, weight="bold"))
+        self.txt_salida.tag_configure("cabecera_mision",    foreground="#facc15",
+                                      font=font.Font(family="Segoe UI", size=11, weight="bold"))
+        self.txt_salida.tag_configure("cabecera_combate",   foreground="#f43f5e",
+                                      font=font.Font(family="Segoe UI", size=11, weight="bold"))
+        self.txt_salida.tag_configure("cabecera_accion",    foreground="#67e8f9",
+                                      font=font.Font(family="Segoe UI", size=11, weight="bold"))
+        self.txt_salida.tag_configure("cabecera_comprobar", foreground="#fbbf24",
+                                      font=font.Font(family="Segoe UI", size=11, weight="bold"))
+        self.txt_salida.tag_configure("cabecera",           foreground="#e2e8f0",
+                                      font=font.Font(family="Segoe UI", size=11, weight="bold"))
+        # Arte y clase
+        self.txt_salida.tag_configure("arte",         foreground="#38bdf8",
+                                      font=font.Font(family="Consolas", size=11))
+        self.txt_salida.tag_configure("nombre_personaje", foreground="#facc15",
+                                      font=font.Font(family="Consolas", size=11, weight="bold"))
+        self.txt_salida.tag_configure("clase_titulo", foreground="#e2e8f0",
+                                      font=font.Font(family="Segoe UI", size=10, weight="bold"))
+        self.txt_salida.tag_configure("clase_desc",   foreground="#94a3b8",
+                                      font=font.Font(family="Segoe UI", size=9, slant="italic"))
+        # HP / MP / XP
+        self.txt_salida.tag_configure("barra_hp",      foreground="#f43f5e",
+                                      font=font.Font(family="Consolas", size=11))
+        self.txt_salida.tag_configure("barra_hp_dano", foreground="#fb923c",
+                                      font=font.Font(family="Consolas", size=11))
+        self.txt_salida.tag_configure("barra_hp_cero", foreground="#7f1d1d",
+                                      font=font.Font(family="Consolas", size=11))
+        self.txt_salida.tag_configure("barra_mp",      foreground="#818cf8",
+                                      font=font.Font(family="Consolas", size=11))
+        self.txt_salida.tag_configure("barra_xp",      foreground="#fbbf24",
+                                      font=font.Font(family="Consolas", size=11))
+        # Acciones
+        self.txt_salida.tag_configure("accion_tipo",    foreground="#67e8f9",
+                                      font=font.Font(family="Segoe UI", size=10, weight="bold"))
+        self.txt_salida.tag_configure("accion_prop",    foreground="#94a3b8",
+                                      font=font.Font(family="Segoe UI", size=10))
+        self.txt_salida.tag_configure("accion_dano",    foreground="#f43f5e",
+                                      font=font.Font(family="Segoe UI", size=10, weight="bold"))
+        self.txt_salida.tag_configure("accion_pasos",   foreground="#4ade80",
+                                      font=font.Font(family="Consolas", size=10))
+        self.txt_salida.tag_configure("accion_mensaje", foreground="#fbbf24",
+                                      font=font.Font(family="Segoe UI", size=10))
+        self.txt_salida.tag_configure("golpe_anim",     foreground="#f43f5e",
+                                      font=font.Font(family="Consolas", size=11, weight="bold"))
+        self.txt_salida.tag_configure("bocadillo",      foreground="#a78bfa",
+                                      font=font.Font(family="Consolas", size=10))
+        # Estados y daño
+        self.txt_salida.tag_configure("estado_efecto",  foreground="#a78bfa",
+                                      font=font.Font(family="Segoe UI", size=10))
+        self.txt_salida.tag_configure("habilidad_dano", foreground="#fb923c",
+                                      font=font.Font(family="Consolas", size=10))
+        self.txt_salida.tag_configure("derrota",        foreground="#7f1d1d",
+                                      font=font.Font(family="Segoe UI", size=10, weight="bold"))
+        self.txt_salida.tag_configure("dano_historial", foreground="#fb923c",
+                                      font=font.Font(family="Consolas", size=10))
+        # Props específicas
+        self.txt_salida.tag_configure("objeto_prop",   foreground="#4ade80")
+        self.txt_salida.tag_configure("mision_prop",   foreground="#facc15")
+        self.txt_salida.tag_configure("combate_prop",  foreground="#f43f5e")
+        # Generales
+        self.txt_salida.tag_configure("ok",          foreground="#4ade80")
+        self.txt_salida.tag_configure("prop",        foreground="#94a3b8")
+        self.txt_salida.tag_configure("info",        foreground="#64748b")
+        self.txt_salida.tag_configure("advertencia", foreground="#fb923c")
+        self.txt_salida.tag_configure("condicion",   foreground="#67e8f9")
+        self.txt_salida.tag_configure("sep",         foreground="#1e293b")
+        self.txt_salida.tag_configure("sep_bloque",  foreground="#334155")
+        self.txt_salida.tag_configure("error_ejec",  foreground="#f43f5e")
         bottom_frame = ttk.Frame(self.outer_paned, style="TFrame")
         self.outer_paned.add(bottom_frame, weight=1)
 
@@ -345,15 +453,15 @@ class AppAnalizador:
                 self.tabla_errores.delete(item)
             self.tabla_simbolos.delete(*self.tabla_simbolos.get_children())
             self.txt_arbol.delete("1.0", "end")
+            self.txt_salida.configure(state="normal")
+            self.txt_salida.delete("1.0", "end")
+            self.txt_salida.configure(state="disabled")
             self.lbl_status.config(text="● Sistema listo", fg="#94a3b8")
             return
 
         res = self.analizador.analizar(codigo)
         errores_sintacticos = self.sintactico.analizar(res["desglose"])
-        if errores_sintacticos:
-            errores_semanticos = []
-        else:
-            errores_semanticos = self.semantico.analizar(res["desglose"])
+        errores_semanticos = self.semantico.analizar(res["desglose"])
 
         for item in self.tabla_tokens.get_children():
             self.tabla_tokens.delete(item)
@@ -403,17 +511,98 @@ class AppAnalizador:
         self.tabla_simbolos.delete(*self.tabla_simbolos.get_children())
         for nombre, datos in self.semantico.tabla_simbolos.items():
             categoria = datos["categoria"]
+
             if categoria == "variable_global":
                 slot = datos["valor"].get("_val")
                 if slot:
                     self.tabla_simbolos.insert("", "end", values=(
                         nombre, "variable_global", "-", slot["valor"], slot["tipo"]
                     ))
+
+            elif categoria == "personaje":
+                hp_actual = datos.get("HP_actual")
+
+                for atributo, info in datos["valor"].items():
+                    if atributo == "HP" and hp_actual is not None:
+                        tag = "hp_danado" if hp_actual < info["valor"] else ""
+                        self.tabla_simbolos.insert("", "end", values=(
+                            nombre, categoria, "HP", hp_actual, "int"
+                        ), tags=(tag,) if tag else ())
+                    else:
+                        self.tabla_simbolos.insert("", "end", values=(
+                            nombre, categoria, atributo, info["valor"], info["tipo"]
+                        ))
+
             else:
                 for atributo, info in datos["valor"].items():
                     self.tabla_simbolos.insert("", "end", values=(
                         nombre, categoria, atributo, info["valor"], info["tipo"]
                     ))
+
+        # Color para HP dañado
+        self.tabla_simbolos.tag_configure("hp_danado", foreground="#fb923c")
+
+        # ── Actualizar pestaña Salida ────────────────────────────────────
+        self.txt_salida.configure(state="normal")
+        self.txt_salida.delete("1.0", "end")
+        self._tags_arte_creados.clear()
+
+        hay_errores = (not res["aprobado"]) or errores_sintacticos or errores_semanticos
+
+        if hay_errores:
+            self.txt_salida.insert("end", "⛔  Ejecución detenida por errores.\n\n", "error_ejec")
+            self.txt_salida.insert("end", "  Corrige los errores marcados en el editor\n", "info")
+            self.txt_salida.insert("end", "  para ver la salida de ejecución.\n", "info")
+        else:
+            lineas_salida = self.interprete.interpretar(
+                self.semantico.tabla_simbolos,
+                res["desglose"]
+            )
+            for item in lineas_salida:
+                tipo  = item["tipo"]
+                texto = item["texto"] + "\n"
+                color = item.get("color")
+
+                if tipo == "cabecera":
+                    cat = item.get("categoria", "")
+                    tag = f"cabecera_{cat}" if cat else "cabecera"
+                elif tipo == "arte" and color:
+                    # Arte con color dinámico por clase — crear tag ad-hoc
+                    tag_dyn = f"arte_{color.replace('#','')}"
+                    if tag_dyn not in self._tags_arte_creados:
+                        self.txt_salida.tag_configure(
+                            tag_dyn,
+                            foreground=color,
+                            font=font.Font(family="Consolas", size=11)
+                        )
+                        self._tags_arte_creados.add(tag_dyn)
+                    tag = tag_dyn
+                elif tipo == "clase_titulo" and color:
+                    tag_dyn = f"clase_titulo_{color.replace('#','')}"
+                    if tag_dyn not in self._tags_arte_creados:
+                        self.txt_salida.tag_configure(
+                            tag_dyn,
+                            foreground=color,
+                            font=font.Font(family="Segoe UI", size=10, weight="bold")
+                        )
+                        self._tags_arte_creados.add(tag_dyn)
+                    tag = tag_dyn
+                elif tipo == "accion_prop" and color:
+                    tag_dyn = f"accion_prop_{color.replace('#','')}"
+                    if tag_dyn not in self._tags_arte_creados:
+                        self.txt_salida.tag_configure(
+                            tag_dyn,
+                            foreground=color,
+                            font=font.Font(family="Segoe UI", size=10)
+                        )
+                        self._tags_arte_creados.add(tag_dyn)
+                    tag = tag_dyn
+                else:
+                    tag = tipo
+
+                self.txt_salida.insert("end", texto, tag)
+
+        self.txt_salida.configure(state="disabled")
     
     def verificar_tooltip(self, event):
         index = self.txt_input.index(f"@{event.x},{event.y}")
