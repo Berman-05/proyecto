@@ -3,9 +3,23 @@ import re
 class AnalizadorLexico:
     def __init__(self):
         self.palabras_reservadas = {
-            'personaje', 'habilidad', 'estado', 'objeto', 'mision', 
-            'combate', 'efecto', 'condición', 'condicion', 'daño', 'dano', 
-            'MP', 'HP', 'XP'
+            # Categorías principales
+            'personaje', 'habilidad', 'estado', 'objeto', 'mision',
+            'combate', 'accion', 'comprobar',
+            # Propiedades de personaje
+            'HP', 'MP', 'XP',
+            # Propiedad de habilidad
+            'dano', 'daño',
+            # Propiedad de estado
+            'efecto',
+            # Sub-bloque apariencia y sus props
+            'apariencia', 'clase', 'raza', 'nivel', 'icono',
+            # Propiedades de accion
+            'usar', 'objetivo', 'mensaje', 'caminar', 'hablar',
+            # Propiedades de comprobar
+            # (objetivo ya incluido arriba)
+            # Condiciones
+            'condicion', 'condición',
         }
         
         self.reglas_lexicas = [
