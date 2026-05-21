@@ -5,6 +5,7 @@ from sintactico import AnalizadorSintactico
 from arbol import PestanaArbol, construir_arbol_desde_tokens, arbol_a_texto
 from semantico import AnalizadorSemantico
 from interprete import InterpretadorRPG
+from runtime_ascii import AsciiSideScrollerRuntime
 
 class LineNumberCanvas(tk.Canvas):
     def __init__(self, *args, **kwargs):
@@ -57,6 +58,7 @@ class AppAnalizador:
         self.sintactico = AnalizadorSintactico()
         self.semantico = AnalizadorSemantico()
         self.interprete = InterpretadorRPG()
+        self.visual_runtime = None
 
         self.root.title("RPG Script Lexer Pro")
         self.root.geometry("1100x750")
@@ -283,6 +285,13 @@ class AppAnalizador:
         tk.Label(top_salida, text="SALIDA DE EJECUCIÓN RPG",
                  bg="#1e293b", fg="#4ade80",
                  font=self.fuente_ui).pack(side="left", padx=14, pady=8)
+        tk.Button(top_salida,
+                  text="Abrir mundo 2D",
+                  command=self.abrir_mundo_ascii,
+                  bg="#0f766e", fg="#f8fafc",
+                  activebackground="#115e59", activeforeground="#f8fafc",
+                  relief="flat", padx=12, pady=4,
+                  font=self.fuente_ui).pack(side="right", padx=14, pady=5)
 
         salida_wrap = tk.Frame(tab_salida, bg="#020617")
         salida_wrap.pack(fill="both", expand=True, padx=10, pady=10)
@@ -603,6 +612,37 @@ class AppAnalizador:
                 self.txt_salida.insert("end", texto, tag)
 
         self.txt_salida.configure(state="disabled")
+
+    def abrir_mundo_ascii(self):
+        codigo = self.txt_input.get("1.0", "end-1c")
+        if not codigo.strip():
+            self.lbl_status.config(text="● No hay script para visualizar", fg="#fb923c")
+            return
+
+        res = self.analizador.analizar(codigo)
+        errores_sintacticos = self.sintactico.analizar(res["desglose"])
+        errores_semanticos = self.semantico.analizar(res["desglose"])
+
+        if (not res["aprobado"]) or errores_sintacticos or errores_semanticos:
+            self.lbl_status.config(text="● Corrige errores antes de abrir el mundo 2D", fg="#f43f5e")
+            return
+
+        if self.visual_runtime is not None and self.visual_runtime.running:
+            self.visual_runtime.stop()
+
+        self.visual_runtime = AsciiSideScrollerRuntime.from_symbol_table(
+            self.semantico.tabla_simbolos,
+            res["desglose"],
+            master=self.root,
+        )
+
+        # Hook directo: el interprete ejecuta acciones sobre el runtime visual.
+        self.interprete.set_visual_runtime(self.visual_runtime)
+        self.interprete.interpretar(self.semantico.tabla_simbolos, res["desglose"])
+        self.interprete.set_visual_runtime(None)
+
+        self.visual_runtime.start()
+        self.lbl_status.config(text="● Mundo ASCII 2D ejecutándose", fg="#10b981")
     
     def verificar_tooltip(self, event):
         index = self.txt_input.index(f"@{event.x},{event.y}")

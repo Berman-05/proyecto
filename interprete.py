@@ -116,6 +116,12 @@ def _arte_personaje(icono, clase_nombre=None, nombre_personaje=None):
 # ── Intérprete ────────────────────────────────────────────────────────────────
 
 class InterpretadorRPG:
+    def __init__(self, visual_runtime=None):
+        self.visual_runtime = visual_runtime
+
+    def set_visual_runtime(self, visual_runtime):
+        """Permite que el interprete actualice una ventana ASCII en vez de solo loguear."""
+        self.visual_runtime = visual_runtime
 
     def interpretar(self, tabla_simbolos, tokens_raw):
         self._tabla = tabla_simbolos
@@ -319,6 +325,9 @@ class InterpretadorRPG:
             huella = "👣 " * min(pasos, 10)
             salida.append(_ln(f"  🚶  CAMINAR  →  {pasos} paso(s)", "accion_tipo"))
             salida.append(_ln(f"     {huella}", "accion_pasos"))
+            if self.visual_runtime is not None:
+                entidad_visual = obj_ref if self.visual_runtime.get_enemy(obj_ref) else "player"
+                self.visual_runtime.walk(entidad_visual, pasos)
             if pasos > 10:
                 salida.append(_ln(f"     … y {pasos - 10} pasos más", "info"))
             salida.append(_ln("", "sep"))
@@ -341,6 +350,9 @@ class InterpretadorRPG:
 
         # ── USAR HABILIDAD SOBRE OBJETIVO ─────────────────────────────────
         if usar_ref and obj_ref:
+            if self.visual_runtime is not None:
+                self.visual_runtime.use_ability("player", obj_ref, usar_ref)
+
             habil_datos = tabla.get(usar_ref, {})
             obj_datos   = tabla.get(obj_ref,  {})
 

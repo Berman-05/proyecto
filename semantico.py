@@ -34,13 +34,14 @@ class AnalizadorSemantico:
         # Propiedades válidas por categoría principal
         self.propiedades_validas = {
             "personaje": {"HP", "MP", "XP"},
-            "habilidad": {"dano"},
+            "habilidad": {"dano", "tipo", "distancia", "nivel"},
             "estado":    {"efecto"},
             "objeto":    set(),
             "mision":    set(),
             "combate":   set(),
-            "accion":    {"usar", "objetivo", "mensaje", "caminar", "hablar"},
+            "accion":    {"usar", "objetivo", "mensaje", "caminar", "hablar", "enemigo"},
             "comprobar": {"objetivo"},
+            "oleada":    {"enemigo"},
         }
 
         # Sub-bloque apariencia (dentro de personaje)
@@ -53,6 +54,8 @@ class AnalizadorSemantico:
             "XP":       "int",
             # habilidad
             "dano":     "int",
+            "tipo":      "string",
+            "distancia": "int",
             # estado
             "efecto":   "string",
             # apariencia
@@ -66,6 +69,7 @@ class AnalizadorSemantico:
             "mensaje":  "string",
             "caminar":  "int",
             "hablar":   "string",
+            "enemigo":   "ref_personaje",
         }
 
     # ── Entrada principal ─────────────────────────────────────────────────
@@ -343,7 +347,9 @@ class AnalizadorSemantico:
 
         elif val_tok["token"] == "IDENTIFICADOR":
             nombre_ref = val_tok["lexema"]
-            if tipo_esp == "ref_habilidad":
+            if tipo_esp == "string":
+                valor = nombre_ref
+            elif tipo_esp == "ref_habilidad":
                 if nombre_ref not in self.tabla_simbolos:
                     self.errores.append(self._error(linea, "E01",
                         f"Habilidad '{nombre_ref}' no declarada"))
@@ -365,7 +371,8 @@ class AnalizadorSemantico:
                 self.errores.append(self._error(linea, "E01",
                     f"Identificador '{nombre_ref}' no declarado"))
                 return i + 4
-            valor = nombre_ref
+            if valor is None:
+                valor = nombre_ref
 
         elif val_tok["token"] == "CADENA":
             valor = val_tok["lexema"]
@@ -378,13 +385,20 @@ class AnalizadorSemantico:
             return i + 4
 
         ident = self.identificador_actual
+        if propiedad == "enemigo" and self.contexto_actual == "oleada":
+            enemigos = self.tabla_simbolos[ident]["valor"].setdefault(
+                "enemigo", {"valor": [], "tipo": "lista_ref"}
+            )
+            enemigos["valor"].append(valor)
+            return i + 4
+
         if propiedad in self.tabla_simbolos[ident]["valor"]:
             self.errores.append(self._error(linea, "E06", f"'{propiedad}' ya definida"))
             return i + 4
 
         tipo_val = (
             "int"    if isinstance(valor, int)
-            else "string" if val_tok["token"] == "CADENA"
+            else "string" if val_tok["token"] == "CADENA" or tipo_esp == "string"
             else "ref"
         )
         self.tabla_simbolos[ident]["valor"][propiedad] = {

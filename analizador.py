@@ -5,17 +5,17 @@ class AnalizadorLexico:
         self.palabras_reservadas = {
             # Categorías principales
             'personaje', 'habilidad', 'estado', 'objeto', 'mision',
-            'combate', 'accion', 'comprobar',
+            'combate', 'accion', 'comprobar', 'oleada',
             # Propiedades de personaje
             'HP', 'MP', 'XP',
             # Propiedad de habilidad
-            'dano', 'daño',
+            'dano', 'daño', 'tipo', 'distancia',
             # Propiedad de estado
             'efecto',
             # Sub-bloque apariencia y sus props
             'apariencia', 'clase', 'raza', 'nivel', 'icono',
             # Propiedades de accion
-            'usar', 'objetivo', 'mensaje', 'caminar', 'hablar',
+            'usar', 'objetivo', 'mensaje', 'caminar', 'hablar', 'enemigo',
             # Propiedades de comprobar
             # (objetivo ya incluido arriba)
             # Condiciones
