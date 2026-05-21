@@ -88,8 +88,10 @@ class AppAnalizador:
         res = self.analizador.analizar(codigo)
         self.analizador.ultimo_resultado = res
 
+        self.resaltar_sintaxis(codigo, res)
+
         for item in res["desglose"]:
-            if "rango" in item:
+            if "rango" in item and "ERROR" in item["token"]:
                 inicio_abs, fin_abs = item["rango"]
                 self.txt_input.tag_add("error_subrayado",
                                     f"1.0 + {inicio_abs} chars",
@@ -102,6 +104,45 @@ class AppAnalizador:
             inicio = f"{linea}.0"
             fin = f"{linea}.end"
             self.txt_input.tag_add("error_sintactico", inicio, fin)
+
+    def resaltar_sintaxis(self, codigo, res):
+        """Aplica resaltado de colores por tipo de token al editor."""
+        # Limpiar tags de resaltado previos
+        for tag in ("hl_palabra_reservada", "hl_identificador", "hl_numero",
+                    "hl_cadena", "hl_operador", "hl_op_comparacion",
+                    "hl_simbolo", "hl_comentario"):
+            self.txt_input.tag_remove(tag, "1.0", "end")
+
+        # Resaltar comentarios primero (no están en desglose porque se omiten)
+        import re as _re
+        for m in _re.finditer(r'--.*', codigo):
+            self.txt_input.tag_add("hl_comentario",
+                                   f"1.0 + {m.start()} chars",
+                                   f"1.0 + {m.end()} chars")
+
+        # Mapa de tipo de token → tag de color
+        mapa = {
+            "PALABRA_RESERVADA":   "hl_palabra_reservada",
+            "IDENTIFICADOR":       "hl_identificador",
+            "NUMERO":              "hl_numero",
+            "CADENA":              "hl_cadena",
+            "OPERADOR":            "hl_operador",
+            "OPERADOR_COMPARACION":"hl_op_comparacion",
+            "SIMBOLO_ESTRUCTURAL": "hl_simbolo",
+        }
+
+        for item in res["desglose"]:
+            token = item["token"]
+            tag = mapa.get(token)
+            if not tag or "ERROR" in token:
+                continue
+            if "rango" not in item:
+                continue
+            inicio_abs, fin_abs = item["rango"]
+            # Para CADENA el lexema fue stripeado de comillas; ajustar al rango original
+            self.txt_input.tag_add(tag,
+                                   f"1.0 + {inicio_abs} chars",
+                                   f"1.0 + {fin_abs} chars")
     
     def obtener_linea(self, posicion):
         texto = self.txt_input.get("1.0", "end")
@@ -135,6 +176,17 @@ class AppAnalizador:
         self.txt_input.tag_configure("error_sintactico",
                                      foreground="#f43f5e",
                                      underline=True)
+        # ── Resaltado de sintaxis (colores por tipo de token) ────────────────
+        self.txt_input.tag_configure("hl_palabra_reservada", foreground="#38bdf8",
+                                     font=font.Font(family="Consolas", size=self.fuente_mono.cget("size"), weight="bold"))
+        self.txt_input.tag_configure("hl_identificador",     foreground="#e2e8f0")
+        self.txt_input.tag_configure("hl_numero",            foreground="#fb923c")
+        self.txt_input.tag_configure("hl_cadena",            foreground="#4ade80")
+        self.txt_input.tag_configure("hl_operador",          foreground="#f472b6")
+        self.txt_input.tag_configure("hl_op_comparacion",    foreground="#a78bfa")
+        self.txt_input.tag_configure("hl_simbolo",           foreground="#94a3b8")
+        self.txt_input.tag_configure("hl_comentario",        foreground="#475569",
+                                     font=font.Font(family="Consolas", size=self.fuente_mono.cget("size"), slant="italic"))
 
     def create_widgets(self):
         # ── HEADER ──────────────────────────────────────────────────────────
@@ -443,6 +495,12 @@ class AppAnalizador:
             self.fuente_arbol_rama.configure(size=tamano_rama)
             self.fuente_arbol_hoja.configure(size=nuevo_tamano)
             self.pestana_arbol.redibujar_con_fuente(self.fuente_arbol_rama, self.fuente_arbol_hoja)
+
+            # Actualizar fuentes de tags de resaltado de sintaxis
+            self.txt_input.tag_configure("hl_palabra_reservada",
+                font=font.Font(family="Consolas", size=nuevo_tamano, weight="bold"))
+            self.txt_input.tag_configure("hl_comentario",
+                font=font.Font(family="Consolas", size=nuevo_tamano, slant="italic"))
         except tk.TclError:
             pass
 

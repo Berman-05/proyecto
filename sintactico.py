@@ -56,7 +56,24 @@ class AnalizadorSintactico:
                     else:
                         j = i + 2
                         j = self._saltar_valor(tokens, j)
-                        i = j if j < len(tokens) and tokens[j]["lexema"] == ";" else j - 1
+                        if j < len(tokens) and tokens[j]["lexema"] == ";":
+                            i = j
+                        else:
+                            errores.append(self._error(linea, f"Falta ';' después del valor de '{lexema}'"))
+                            i = j - 1
+
+                elif lexema in ["objetivo", "nivel", "usar", "tipo", "distancia",
+                                "mensaje", "caminar", "hablar", "enemigo",
+                                "clase", "raza", "icono", "apariencia"]:
+                    # Propiedades asignables: palabra_reservada = valor ;
+                    if self._esperar_lexema(tokens, i+1, "="):
+                        j = i + 2
+                        j = self._saltar_valor(tokens, j)
+                        if j < len(tokens) and tokens[j]["lexema"] == ";":
+                            i = j
+                        else:
+                            errores.append(self._error(linea, f"Falta ';' después del valor de '{lexema}'"))
+                            i = j - 1
 
             elif lexema == "{":
                 pila_llaves.append(tok)
@@ -68,6 +85,7 @@ class AnalizadorSintactico:
                     pila_llaves.pop()
 
             elif tok["token"] == "IDENTIFICADOR":
+                # Caso 1: Entidad.Propiedad = valor [op valor] ;
                 if (i + 2 < len(tokens)
                         and tokens[i+1]["lexema"] == "."
                         and tokens[i+2]["token"] in ("IDENTIFICADOR", "PALABRA_RESERVADA")):
@@ -78,7 +96,24 @@ class AnalizadorSintactico:
                         if j < len(tokens) and tokens[j]["token"] == "OPERADOR":
                             j += 1
                             j = self._saltar_valor(tokens, j)
-                        i = j if j < len(tokens) and tokens[j]["lexema"] == ";" else j - 1
+                        if j < len(tokens) and tokens[j]["lexema"] == ";":
+                            i = j
+                        else:
+                            errores.append(self._error(linea, f"Falta ';' en asignación de '{tok['lexema']}'"))
+                            i = j - 1
+
+                # Caso 2: identificador = valor ;  (asignación simple dentro de bloque)
+                elif (i + 1 < len(tokens) and tokens[i+1]["lexema"] == "="):
+                    j = i + 2
+                    j = self._saltar_valor(tokens, j)
+                    if j < len(tokens) and tokens[j]["token"] == "OPERADOR":
+                        j += 1
+                        j = self._saltar_valor(tokens, j)
+                    if j < len(tokens) and tokens[j]["lexema"] == ";":
+                        i = j
+                    else:
+                        errores.append(self._error(linea, f"Falta ';' en asignación de '{tok['lexema']}'"))
+                        i = j - 1
 
             i += 1
 

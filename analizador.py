@@ -74,27 +74,28 @@ class AnalizadorLexico:
                 
             elif tipo_token == 'IDENTIFICADOR':
                 if lexema in self.palabras_reservadas:
-                    resultados.append({"lexema": lexema, "token": "PALABRA_RESERVADA", "linea": linea_actual})
+                    resultados.append({"lexema": lexema, "token": "PALABRA_RESERVADA", "linea": linea_actual, "rango": (inicio, fin)})
                 else:
-                    resultados.append({"lexema": lexema, "token": "IDENTIFICADOR", "linea": linea_actual})
+                    resultados.append({"lexema": lexema, "token": "IDENTIFICADOR", "linea": linea_actual, "rango": (inicio, fin)})
 
             elif tipo_token == 'NUMERO':
-                resultados.append({"lexema": lexema, "token": "NUMERO", "linea": linea_actual})
+                resultados.append({"lexema": lexema, "token": "NUMERO", "linea": linea_actual, "rango": (inicio, fin)})
                 
             elif tipo_token == 'SIMBOLO':
-                resultados.append({"lexema": lexema, "token": "SIMBOLO_ESTRUCTURAL", "linea": linea_actual})
+                resultados.append({"lexema": lexema, "token": "SIMBOLO_ESTRUCTURAL", "linea": linea_actual, "rango": (inicio, fin)})
                 
             elif tipo_token == 'OP_COMPARACION':
-                resultados.append({"lexema": lexema, "token": "OPERADOR_COMPARACION", "linea": linea_actual})
+                resultados.append({"lexema": lexema, "token": "OPERADOR_COMPARACION", "linea": linea_actual, "rango": (inicio, fin)})
                 
             elif tipo_token == 'OPERADOR':
-                resultados.append({"lexema": lexema, "token": "OPERADOR", "linea": linea_actual})
+                resultados.append({"lexema": lexema, "token": "OPERADOR", "linea": linea_actual, "rango": (inicio, fin)})
             
             elif tipo_token == 'CADENA':
                 resultados.append({
                     "lexema": lexema.strip('"'),
                     "token": "CADENA",
-                    "linea": linea_actual
+                    "linea": linea_actual,
+                    "rango": (inicio, fin)
     })
 
         return {
